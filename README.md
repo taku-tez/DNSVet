@@ -51,13 +51,35 @@ mailvet scan -f domains.txt -o results.json --json
 mailvet scan -f domains.txt -c 10
 ```
 
-### Integration with DNS Providers
+### Cloud Provider Integration
 
-Coming soon:
-- `--aws` - Scan all Route53 hosted zones
-- `--gcp` - Scan Google Cloud DNS zones
-- `--azure` - Scan Azure DNS zones
-- `--cloudflare` - Scan Cloudflare zones
+```bash
+# AWS Route53 - scan all hosted zones
+mailvet scan --aws
+mailvet scan --aws --aws-profile production
+
+# Google Cloud DNS
+mailvet scan --gcp
+mailvet scan --gcp --gcp-project my-project
+
+# Azure DNS
+mailvet scan --azure
+mailvet scan --azure --azure-subscription xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# Cloudflare (uses CLOUDFLARE_API_TOKEN env var)
+mailvet scan --cloudflare
+
+# Combine multiple sources
+mailvet scan --aws --gcp --cloudflare -o results.json --json
+```
+
+### List Domains from Providers
+
+```bash
+# List all domains without scanning
+mailvet sources --aws --gcp --cloudflare
+mailvet sources --aws --json
+```
 
 ## Output Example
 

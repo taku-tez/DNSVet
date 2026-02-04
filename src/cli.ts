@@ -11,7 +11,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { analyzeDomain, analyzeMultiple } from './core/index.js';
 import { formatResult, formatSummary } from './output.js';
-import type { DomainResult, ScanOptions } from './types.js';
+import { getRoute53Domains } from './sources/aws.js';
+import { getCloudDNSDomains } from './sources/gcp.js';
+import { getAzureDNSDomains } from './sources/azure.js';
+import { getCloudflareDomains } from './sources/cloudflare.js';
+import type { ScanOptions } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(await fs.readFile(path.join(__dirname, '..', 'package.json'), 'utf-8'));
@@ -48,34 +52,97 @@ program
 
 program
   .command('scan')
-  .description('Scan multiple domains')
+  .description('Scan multiple domains from file, stdin, or cloud providers')
   .option('-f, --file <path>', 'Read domains from file')
   .option('--stdin', 'Read domains from stdin')
+  .option('--aws', 'Scan all AWS Route53 hosted zones')
+  .option('--aws-profile <profile>', 'AWS profile to use')
+  .option('--gcp', 'Scan all Google Cloud DNS zones')
+  .option('--gcp-project <project>', 'GCP project ID')
+  .option('--azure', 'Scan all Azure DNS zones')
+  .option('--azure-subscription <id>', 'Azure subscription ID')
+  .option('--cloudflare', 'Scan all Cloudflare zones')
   .option('-o, --output <path>', 'Write results to file')
   .option('--json', 'Output as JSON')
   .option('-c, --concurrency <n>', 'Concurrent checks', '5')
   .option('--selectors <selectors>', 'Custom DKIM selectors (comma-separated)')
   .action(async (options) => {
     let domains: string[] = [];
+    const sources: string[] = [];
 
+    // Collect domains from all specified sources
     if (options.file) {
       const content = await fs.readFile(options.file, 'utf-8');
-      domains = content
+      const fileDomains = content
         .split('\n')
         .map(line => line.trim())
         .filter(line => line && !line.startsWith('#'));
-    } else if (options.stdin) {
-      domains = await readStdin();
-    } else {
-      console.error('Error: Specify --file or --stdin');
-      process.exit(1);
+      domains.push(...fileDomains);
+      sources.push(`file (${fileDomains.length})`);
     }
+
+    if (options.stdin) {
+      const stdinDomains = await readStdin();
+      domains.push(...stdinDomains);
+      sources.push(`stdin (${stdinDomains.length})`);
+    }
+
+    if (options.aws) {
+      console.error('Fetching domains from AWS Route53...');
+      try {
+        const awsDomains = await getRoute53Domains({ profile: options.awsProfile });
+        domains.push(...awsDomains);
+        sources.push(`AWS Route53 (${awsDomains.length})`);
+      } catch (err) {
+        console.error(`AWS Error: ${(err as Error).message}`);
+      }
+    }
+
+    if (options.gcp) {
+      console.error('Fetching domains from Google Cloud DNS...');
+      try {
+        const gcpDomains = await getCloudDNSDomains({ project: options.gcpProject });
+        domains.push(...gcpDomains);
+        sources.push(`GCP Cloud DNS (${gcpDomains.length})`);
+      } catch (err) {
+        console.error(`GCP Error: ${(err as Error).message}`);
+      }
+    }
+
+    if (options.azure) {
+      console.error('Fetching domains from Azure DNS...');
+      try {
+        const azureDomains = await getAzureDNSDomains({ subscription: options.azureSubscription });
+        domains.push(...azureDomains);
+        sources.push(`Azure DNS (${azureDomains.length})`);
+      } catch (err) {
+        console.error(`Azure Error: ${(err as Error).message}`);
+      }
+    }
+
+    if (options.cloudflare) {
+      console.error('Fetching domains from Cloudflare...');
+      try {
+        const cfDomains = await getCloudflareDomains();
+        domains.push(...cfDomains);
+        sources.push(`Cloudflare (${cfDomains.length})`);
+      } catch (err) {
+        console.error(`Cloudflare Error: ${(err as Error).message}`);
+      }
+    }
+
+    // Deduplicate domains
+    domains = [...new Set(domains)];
 
     if (domains.length === 0) {
       console.error('Error: No domains to scan');
+      console.error('Specify at least one source: --file, --stdin, --aws, --gcp, --azure, or --cloudflare');
       process.exit(1);
     }
 
+    if (sources.length > 0) {
+      console.error(`Sources: ${sources.join(', ')}`);
+    }
     console.error(`Scanning ${domains.length} domains...`);
 
     const scanOptions: ScanOptions = {
@@ -100,6 +167,74 @@ program
 
     const hasFailures = results.some(r => r.grade === 'F');
     process.exit(hasFailures ? 1 : 0);
+  });
+
+// Sources subcommand to list domains from cloud providers
+program
+  .command('sources')
+  .description('List domains from cloud DNS providers')
+  .option('--aws', 'List AWS Route53 hosted zones')
+  .option('--aws-profile <profile>', 'AWS profile to use')
+  .option('--gcp', 'List Google Cloud DNS zones')
+  .option('--gcp-project <project>', 'GCP project ID')
+  .option('--azure', 'List Azure DNS zones')
+  .option('--azure-subscription <id>', 'Azure subscription ID')
+  .option('--cloudflare', 'List Cloudflare zones')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const allDomains: Record<string, string[]> = {};
+
+    if (options.aws) {
+      try {
+        allDomains['aws'] = await getRoute53Domains({ profile: options.awsProfile });
+      } catch (err) {
+        console.error(`AWS: ${(err as Error).message}`);
+        allDomains['aws'] = [];
+      }
+    }
+
+    if (options.gcp) {
+      try {
+        allDomains['gcp'] = await getCloudDNSDomains({ project: options.gcpProject });
+      } catch (err) {
+        console.error(`GCP: ${(err as Error).message}`);
+        allDomains['gcp'] = [];
+      }
+    }
+
+    if (options.azure) {
+      try {
+        allDomains['azure'] = await getAzureDNSDomains({ subscription: options.azureSubscription });
+      } catch (err) {
+        console.error(`Azure: ${(err as Error).message}`);
+        allDomains['azure'] = [];
+      }
+    }
+
+    if (options.cloudflare) {
+      try {
+        allDomains['cloudflare'] = await getCloudflareDomains();
+      } catch (err) {
+        console.error(`Cloudflare: ${(err as Error).message}`);
+        allDomains['cloudflare'] = [];
+      }
+    }
+
+    if (Object.keys(allDomains).length === 0) {
+      console.error('Specify at least one provider: --aws, --gcp, --azure, or --cloudflare');
+      process.exit(1);
+    }
+
+    if (options.json) {
+      console.log(JSON.stringify(allDomains, null, 2));
+    } else {
+      for (const [provider, domains] of Object.entries(allDomains)) {
+        console.log(`\n${provider.toUpperCase()} (${domains.length} domains):`);
+        for (const domain of domains) {
+          console.log(`  ${domain}`);
+        }
+      }
+    }
   });
 
 // Default action: check single domain
