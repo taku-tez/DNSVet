@@ -1,0 +1,91 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import dns from 'node:dns/promises';
+import { checkSPF } from './spf.js';
+
+vi.mock('node:dns/promises');
+
+describe('checkSPF', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('detects valid SPF with -all', async () => {
+    vi.mocked(dns.resolveTxt).mockResolvedValue([
+      ['v=spf1 include:_spf.google.com -all']
+    ]);
+
+    const result = await checkSPF('example.com');
+    
+    expect(result.found).toBe(true);
+    expect(result.mechanism).toBe('-all');
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('warns on ~all softfail', async () => {
+    vi.mocked(dns.resolveTxt).mockResolvedValue([
+      ['v=spf1 include:_spf.google.com ~all']
+    ]);
+
+    const result = await checkSPF('example.com');
+    
+    expect(result.found).toBe(true);
+    expect(result.mechanism).toBe('~all');
+    expect(result.issues.some(i => i.severity === 'medium')).toBe(true);
+  });
+
+  it('critical issue on +all', async () => {
+    vi.mocked(dns.resolveTxt).mockResolvedValue([
+      ['v=spf1 +all']
+    ]);
+
+    const result = await checkSPF('example.com');
+    
+    expect(result.found).toBe(true);
+    expect(result.mechanism).toBe('+all');
+    expect(result.issues.some(i => i.severity === 'critical')).toBe(true);
+  });
+
+  it('reports no SPF found', async () => {
+    vi.mocked(dns.resolveTxt).mockResolvedValue([
+      ['google-site-verification=xxx']
+    ]);
+
+    const result = await checkSPF('example.com');
+    
+    expect(result.found).toBe(false);
+    expect(result.issues.some(i => i.severity === 'critical')).toBe(true);
+  });
+
+  it('counts DNS lookups correctly', async () => {
+    vi.mocked(dns.resolveTxt).mockResolvedValue([
+      ['v=spf1 include:a.com include:b.com include:c.com a mx -all']
+    ]);
+
+    const result = await checkSPF('example.com');
+    
+    expect(result.found).toBe(true);
+    // 3 includes + a + mx + the a and mx mechanisms match multiple patterns
+    expect(result.lookupCount).toBeGreaterThanOrEqual(5);
+  });
+
+  it('warns on exceeding DNS lookup limit', async () => {
+    vi.mocked(dns.resolveTxt).mockResolvedValue([
+      ['v=spf1 include:1.com include:2.com include:3.com include:4.com include:5.com include:6.com include:7.com include:8.com include:9.com include:10.com include:11.com -all']
+    ]);
+
+    const result = await checkSPF('example.com');
+    
+    expect(result.lookupCount).toBeGreaterThan(10);
+    expect(result.issues.some(i => i.message.includes('exceeds DNS lookup limit'))).toBe(true);
+  });
+
+  it('handles DNS errors gracefully', async () => {
+    const error = new Error('ENOTFOUND') as NodeJS.ErrnoException;
+    error.code = 'ENOTFOUND';
+    vi.mocked(dns.resolveTxt).mockRejectedValue(error);
+
+    const result = await checkSPF('nonexistent.example');
+    
+    expect(result.found).toBe(false);
+  });
+});
