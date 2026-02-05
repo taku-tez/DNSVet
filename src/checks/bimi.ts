@@ -8,7 +8,11 @@
 import type { BIMIResult, Issue } from '../types.js';
 import { isDNSNotFoundError, resolveTxtRecords, filterRecordsByPrefix } from '../utils/dns.js';
 import { extractTag } from '../utils/parser.js';
-import { DNS_PREFIX, DNS_SUBDOMAIN } from '../constants.js';
+import { DNS_PREFIX, COMMON_BIMI_SELECTORS } from '../constants.js';
+
+export interface BIMIOptions {
+  selectors?: string[];
+}
 
 const NO_BIMI_RESULT: BIMIResult = {
   found: false,
@@ -19,9 +23,24 @@ const NO_BIMI_RESULT: BIMIResult = {
   }]
 };
 
-export async function checkBIMI(domain: string): Promise<BIMIResult> {
+export async function checkBIMI(domain: string, options: BIMIOptions = {}): Promise<BIMIResult> {
+  const selectors = options.selectors?.length ? options.selectors : COMMON_BIMI_SELECTORS;
   const issues: Issue[] = [];
-  const bimiDomain = `${DNS_SUBDOMAIN.BIMI}.${domain}`;
+
+  // Try each selector until we find a BIMI record
+  for (const selector of selectors) {
+    const bimiDomain = `${selector}._bimi.${domain}`;
+    const result = await checkBIMISelector(domain, selector, bimiDomain);
+    if (result.found) {
+      return result;
+    }
+  }
+
+  return NO_BIMI_RESULT;
+}
+
+async function checkBIMISelector(domain: string, selector: string, bimiDomain: string): Promise<BIMIResult> {
+  const issues: Issue[] = [];
 
   try {
     const txtRecords = await resolveTxtRecords(bimiDomain);

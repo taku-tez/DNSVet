@@ -77,7 +77,7 @@ export async function checkMTASTS(domain: string, options: MTASTSOptions = {}): 
     let policy: MTASTSPolicy | undefined;
     
     if (!policyResult.ok) {
-      addPolicyFetchError(policyResult, domain, issues);
+      addPolicyFetchError(policyResult, domain, httpTimeout, issues);
     } else {
       policy = policyResult.policy;
       if (policy) {
@@ -109,7 +109,7 @@ interface PolicyFetchResult {
   error?: string;
 }
 
-function addPolicyFetchError(result: PolicyFetchResult, domain: string, issues: Issue[]): void {
+function addPolicyFetchError(result: PolicyFetchResult, domain: string, timeout: number, issues: Issue[]): void {
   if (result.status === 404) {
     issues.push({
       severity: 'high',
@@ -120,7 +120,7 @@ function addPolicyFetchError(result: PolicyFetchResult, domain: string, issues: 
     issues.push({
       severity: 'high',
       message: 'MTA-STS policy fetch timed out',
-      recommendation: `Ensure the policy endpoint responds within ${DEFAULT_HTTP_TIMEOUT_MS / 1000} seconds`
+      recommendation: `Ensure the policy endpoint responds within ${timeout / 1000} seconds`
     });
   } else if (result.reason === 'network') {
     issues.push({

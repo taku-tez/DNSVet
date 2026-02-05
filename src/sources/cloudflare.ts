@@ -13,6 +13,60 @@
 
 import type { CloudSource } from '../types.js';
 
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
+
+/**
+ * Fetch with retry for rate limits (429) and server errors (5xx)
+ */
+async function fetchWithRetry(url: string, options: RequestInit): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // Success or client error (4xx except 429) - don't retry
+      if (response.ok || (response.status >= 400 && response.status < 500 && response.status !== 429)) {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMsg = (errorData as { errors?: Array<{ message: string }> })?.errors?.[0]?.message || response.statusText;
+          throw new Error(`Cloudflare API error: ${errorMsg}`);
+        }
+        return response;
+      }
+      
+      // Rate limited - respect Retry-After header
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+        await sleep(waitMs);
+        continue;
+      }
+      
+      // Server error (5xx) - exponential backoff
+      if (response.status >= 500) {
+        await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
+        continue;
+      }
+      
+    } catch (err) {
+      lastError = err as Error;
+      // Network error - retry with backoff
+      if (attempt < MAX_RETRIES - 1) {
+        await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
+        continue;
+      }
+    }
+  }
+  
+  throw lastError || new Error('Max retries exceeded');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export interface CloudflareOptions {
   /** API Token (recommended) */
   apiToken?: string;
@@ -78,16 +132,10 @@ export async function getCloudflareDomains(options: CloudflareOptions = {}): Pro
   try {
     while (true) {
       params.set('page', String(page));
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `https://api.cloudflare.com/client/v4/zones?${params}`,
         { headers }
       );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMsg = (errorData as { errors?: Array<{ message: string }> })?.errors?.[0]?.message || response.statusText;
-        throw new Error(`Cloudflare API error: ${errorMsg}`);
-      }
 
       const data = await response.json() as {
         result: Array<{ name: string; status: string }>;

@@ -3,6 +3,7 @@
  * RFC 7208 compliant implementation
  */
 
+import crypto from 'node:crypto';
 import type { SPFResult, Issue } from '../types.js';
 import { dns, isDNSNotFoundError, resolveTxtRecords, filterRecordsByPrefix } from '../utils/dns.js';
 import { SPF_MAX_DNS_LOOKUPS, SPF_MAX_RECURSION_DEPTH, DNS_PREFIX } from '../constants.js';
@@ -169,7 +170,8 @@ async function countDNSLookupsRecursive(
   // This allows the same domain to appear with different records (rare but valid)
   // while detecting actual loops where the same domain+record is visited twice
   const normalizedDomain = domain.toLowerCase();
-  const recordKey = `${normalizedDomain}:${record.slice(0, 100)}`; // Truncate for efficiency
+  const recordHash = crypto.createHash('sha256').update(record).digest('hex').slice(0, 16);
+  const recordKey = `${normalizedDomain}:${recordHash}`;
   
   if (visited.has(recordKey)) {
     return { count: 0, loopDetected: true };

@@ -42,10 +42,16 @@ export const DNS_PREFIX = {
 export const DNS_SUBDOMAIN = {
   DKIM: '_domainkey',
   DMARC: '_dmarc',
-  BIMI: 'default._bimi',
   MTA_STS: '_mta-sts',
   TLS_RPT: '_smtp._tls',
 } as const;
+
+// Common BIMI selectors
+export const COMMON_BIMI_SELECTORS = [
+  'default',
+  'logo',
+  'brand',
+] as const;
 
 // Common DKIM selectors used by popular email providers
 export const COMMON_DKIM_SELECTORS = [
