@@ -6,6 +6,7 @@ import { checkSPF, checkDKIM, checkDMARC, checkMX, checkBIMI, checkMTASTS, check
 import { calculateGrade, generateRecommendations } from './scorer.js';
 import type { DomainResult, ScanOptions, SPFResult, DKIMResult, DMARCResult, MXResult, BIMIResult, MTASTSResult, TLSRPTResult } from '../types.js';
 import { COMMON_DKIM_SELECTORS, normalizeDomain } from '../types.js';
+import { isValidDomain } from '../utils/domain.js';
 
 /**
  * Create a failed result for a check that errored
@@ -32,6 +33,22 @@ export async function analyzeDomain(
 ): Promise<DomainResult> {
   // Normalize domain using shared function
   domain = normalizeDomain(domain);
+
+  // Validate domain format
+  if (!isValidDomain(domain)) {
+    return {
+      domain,
+      grade: 'F',
+      score: 0,
+      timestamp: new Date().toISOString(),
+      spf: { found: false, issues: [] },
+      dkim: { found: false, selectors: [], issues: [] },
+      dmarc: { found: false, issues: [] },
+      mx: { found: false, records: [], issues: [] },
+      recommendations: [],
+      error: `Invalid domain format: "${domain}"`,
+    };
+  }
 
   // Run all checks in parallel with optional timeout using allSettled
   const dkimSelectors = options.dkimSelectors || COMMON_DKIM_SELECTORS;
@@ -139,12 +156,15 @@ export async function analyzeDomain(
   const { grade, score } = calculateGrade(spf, dkim, dmarc, mx, bimi, mtaSts, tlsRpt, arc);
   const recommendations = generateRecommendations(spf, dkim, dmarc, mx, bimi, mtaSts, tlsRpt, arc);
 
-  // Collect any check-level errors for the error field
+  // Collect any check-level errors for the error field (including advanced checks)
   const errors: string[] = [];
   if (spfResult.status === 'rejected') errors.push(`SPF: ${spfResult.reason?.message}`);
   if (dkimResult.status === 'rejected') errors.push(`DKIM: ${dkimResult.reason?.message}`);
   if (dmarcResult.status === 'rejected') errors.push(`DMARC: ${dmarcResult.reason?.message}`);
   if (mxResult.status === 'rejected') errors.push(`MX: ${mxResult.reason?.message}`);
+  if (bimiResult.status === 'rejected') errors.push(`BIMI: ${bimiResult.reason?.message}`);
+  if (mtaStsResult.status === 'rejected') errors.push(`MTA-STS: ${mtaStsResult.reason?.message}`);
+  if (tlsRptResult.status === 'rejected') errors.push(`TLS-RPT: ${tlsRptResult.reason?.message}`);
 
   return {
     domain,

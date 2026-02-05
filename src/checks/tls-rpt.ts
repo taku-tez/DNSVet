@@ -59,6 +59,21 @@ export async function checkTLSRPT(
     const rua = extractTagValues(record, 'rua');
     const endpointStatus: EndpointStatus[] = [];
 
+    // Validate version tag (RFC 8460)
+    if (!version) {
+      issues.push({
+        severity: 'high',
+        message: 'TLS-RPT record missing version tag (v=)',
+        recommendation: 'Add v=TLSRPTv1 at the start of the TLS-RPT record'
+      });
+    } else if (version.toLowerCase() !== 'tlsrptv1') {
+      issues.push({
+        severity: 'medium',
+        message: `Unexpected TLS-RPT version: "${version}" (expected TLSRPTv1)`,
+        recommendation: 'Use v=TLSRPTv1 for the version tag'
+      });
+    }
+
     // Validate reporting addresses
     if (rua.length === 0) {
       issues.push({

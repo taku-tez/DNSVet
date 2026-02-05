@@ -118,8 +118,29 @@ function addPolicyFetchError(result: PolicyFetchResult, domain: string, issues: 
 }
 
 function validatePolicy(policy: MTASTSPolicy, issues: Issue[]): void {
-  // Check policy mode
-  if (policy.mode === 'none') {
+  // Check required version tag (RFC 8461)
+  if (!policy.version) {
+    issues.push({
+      severity: 'high',
+      message: 'MTA-STS policy missing required version field',
+      recommendation: 'Add "version: STSv1" to the policy file'
+    });
+  } else if (policy.version.toUpperCase() !== 'STSV1') {
+    issues.push({
+      severity: 'medium',
+      message: `Unexpected MTA-STS version: "${policy.version}" (expected STSv1)`,
+      recommendation: 'Use "version: STSv1" for the version field'
+    });
+  }
+
+  // Check required mode tag
+  if (!policy.mode) {
+    issues.push({
+      severity: 'high',
+      message: 'MTA-STS policy missing required mode field',
+      recommendation: 'Add "mode: enforce" or "mode: testing" to the policy file'
+    });
+  } else if (policy.mode === 'none') {
     issues.push({
       severity: 'high',
       message: 'MTA-STS policy mode is "none" - no protection',
@@ -131,10 +152,22 @@ function validatePolicy(policy: MTASTSPolicy, issues: Issue[]): void {
       message: 'MTA-STS policy in testing mode',
       recommendation: 'Consider switching to "enforce" mode after validation'
     });
+  } else if (!['enforce', 'testing', 'none'].includes(policy.mode)) {
+    issues.push({
+      severity: 'high',
+      message: `Invalid MTA-STS mode: "${policy.mode}"`,
+      recommendation: 'Use "mode: enforce", "mode: testing", or "mode: none"'
+    });
   }
 
-  // Check max_age
-  if (policy.maxAge !== undefined && policy.maxAge < 86400) {
+  // Check required max_age tag
+  if (policy.maxAge === undefined) {
+    issues.push({
+      severity: 'high',
+      message: 'MTA-STS policy missing required max_age field',
+      recommendation: 'Add "max_age: 604800" (1 week) or similar to the policy file'
+    });
+  } else if (policy.maxAge < 86400) {
     issues.push({
       severity: 'medium',
       message: `MTA-STS max_age is very short (${policy.maxAge}s)`,
@@ -215,9 +248,11 @@ function parseMTASTSPolicy(text: string): MTASTSPolicy {
       case 'mx':
         policy.mx!.push(value);
         break;
-      case 'max_age':
-        policy.maxAge = parseInt(value, 10);
+      case 'max_age': {
+        const maxAge = parseInt(value, 10);
+        policy.maxAge = Number.isFinite(maxAge) && maxAge >= 0 ? maxAge : undefined;
         break;
+      }
     }
   }
 

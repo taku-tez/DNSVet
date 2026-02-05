@@ -16,6 +16,7 @@ import { getCloudDNSDomains, getCloudDNSDomainsOrg } from './sources/gcp.js';
 import { getAzureDNSDomains } from './sources/azure.js';
 import { getCloudflareDomains } from './sources/cloudflare.js';
 import { normalizeDomain } from './types.js';
+import { isValidDomain } from './utils/domain.js';
 import { DEFAULT_CHECK_TIMEOUT_MS, DEFAULT_CONCURRENCY } from './constants.js';
 import type { ScanOptions } from './types.js';
 
@@ -45,13 +46,21 @@ program
   .option('-t, --timeout <ms>', 'Timeout per check in milliseconds', '10000')
   .option('--selectors <selectors>', 'Custom DKIM selectors (comma-separated)')
   .action(async (domain: string, options) => {
+    // Normalize and validate domain
+    const normalizedDomain = normalizeDomain(domain);
+    if (!isValidDomain(normalizedDomain)) {
+      console.error(`Error: Invalid domain format: "${domain}"`);
+      console.error('Domain must be a valid hostname (e.g., example.com)');
+      process.exit(1);
+    }
+
     const scanOptions: ScanOptions = {
       dkimSelectors: options.selectors?.split(',').map((s: string) => s.trim()).filter(Boolean),
       verbose: options.verbose,
       timeout: parseIntOrDefault(options.timeout, DEFAULT_CHECK_TIMEOUT_MS),
     };
 
-    const result = await analyzeDomain(domain, scanOptions);
+    const result = await analyzeDomain(normalizedDomain, scanOptions);
 
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
@@ -193,10 +202,33 @@ program
     }
 
     // Normalize and deduplicate domains
-    domains = [...new Set(domains.map(d => normalizeDomain(d)).filter(d => d.length > 0))];
+    const normalizedDomains = [...new Set(domains.map(d => normalizeDomain(d)).filter(d => d.length > 0))];
+    
+    // Validate domains and filter out invalid ones
+    const validDomains: string[] = [];
+    const invalidDomains: string[] = [];
+    for (const domain of normalizedDomains) {
+      if (isValidDomain(domain)) {
+        validDomains.push(domain);
+      } else {
+        invalidDomains.push(domain);
+      }
+    }
+    
+    if (invalidDomains.length > 0) {
+      console.error(`Warning: Skipping ${invalidDomains.length} invalid domain(s):`);
+      for (const invalid of invalidDomains.slice(0, 10)) {
+        console.error(`  - ${invalid}`);
+      }
+      if (invalidDomains.length > 10) {
+        console.error(`  ... and ${invalidDomains.length - 10} more`);
+      }
+    }
+    
+    domains = validDomains;
 
     if (domains.length === 0) {
-      console.error('Error: No domains to scan');
+      console.error('Error: No valid domains to scan');
       console.error('Specify at least one source: --file, --stdin, --aws, --gcp, --azure, or --cloudflare');
       process.exit(1);
     }
@@ -204,7 +236,7 @@ program
     if (sources.length > 0) {
       console.error(`Sources: ${sources.join(', ')}`);
     }
-    console.error(`Scanning ${domains.length} domains...`);
+    console.error(`Scanning ${domains.length} valid domains...`);
 
     const scanOptions: ScanOptions = {
       concurrency: parseIntOrDefault(options.concurrency, DEFAULT_CONCURRENCY),

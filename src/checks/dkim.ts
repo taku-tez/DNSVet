@@ -45,21 +45,41 @@ export async function checkDKIM(
     };
   }
 
-  // Check key lengths for found selectors
+  // Check key lengths and status for found selectors
   for (const sel of foundSelectors) {
+    // Check for revoked key (p= empty)
+    if (sel.keyLength === 0) {
+      issues.push({
+        severity: 'critical',
+        message: `DKIM selector "${sel.selector}" has a revoked key (p= is empty)`,
+        recommendation: 'Generate and publish a new DKIM key pair for this selector, or remove the selector if no longer in use'
+      });
+      continue;
+    }
+
+    // Check for missing or unparseable key
+    if (sel.keyLength === undefined) {
+      issues.push({
+        severity: 'high',
+        message: `DKIM selector "${sel.selector}" has missing or invalid public key (p=)`,
+        recommendation: 'Ensure the DKIM record contains a valid base64-encoded public key'
+      });
+      continue;
+    }
+
     // ed25519 keys are always 256-bit and considered strong
     if (sel.keyType === 'ed25519') {
       continue;
     }
     
     // RSA key length checks
-    if (sel.keyLength && sel.keyLength < DKIM_WEAK_KEY_BITS) {
+    if (sel.keyLength < DKIM_WEAK_KEY_BITS) {
       issues.push({
         severity: 'critical',
         message: `DKIM selector "${sel.selector}" uses weak RSA key (${sel.keyLength}-bit)`,
         recommendation: `Upgrade to at least ${DKIM_STRONG_KEY_BITS}-bit RSA key or use ed25519`
       });
-    } else if (sel.keyLength && sel.keyLength < DKIM_STRONG_KEY_BITS) {
+    } else if (sel.keyLength < DKIM_STRONG_KEY_BITS) {
       issues.push({
         severity: 'medium',
         message: `DKIM selector "${sel.selector}" uses ${DKIM_WEAK_KEY_BITS}-bit RSA key`,

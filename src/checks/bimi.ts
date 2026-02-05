@@ -69,6 +69,9 @@ export async function checkBIMI(domain: string): Promise<BIMIResult> {
         message: 'No VMC (Verified Mark Certificate) specified',
         recommendation: 'Consider obtaining a VMC for broader email client support'
       });
+    } else {
+      // Validate certificate URL format
+      validateCertificateUrl(certificateUrl, issues);
     }
 
     return {
@@ -105,6 +108,40 @@ function validateLogoUrl(logoUrl: string | undefined, issues: Issue[]): void {
       severity: 'medium',
       message: 'BIMI logo should be SVG Tiny PS format',
       recommendation: 'Use SVG Tiny PS format for maximum compatibility'
+    });
+  }
+}
+
+function validateCertificateUrl(certificateUrl: string, issues: Issue[]): void {
+  // VMC certificate URL must use HTTPS
+  if (!certificateUrl.startsWith('https://')) {
+    issues.push({
+      severity: 'high',
+      message: 'BIMI VMC certificate URL must use HTTPS',
+      recommendation: 'Update certificate URL to use HTTPS'
+    });
+    return;
+  }
+  
+  // Validate URL format
+  try {
+    new URL(certificateUrl);
+  } catch {
+    issues.push({
+      severity: 'high',
+      message: `Invalid BIMI VMC certificate URL format: "${certificateUrl}"`,
+      recommendation: 'Use a valid HTTPS URL for the VMC certificate'
+    });
+    return;
+  }
+  
+  // Check for expected file extension (.pem is common for VMC)
+  const urlLower = certificateUrl.toLowerCase();
+  if (!urlLower.endsWith('.pem') && !urlLower.endsWith('.crt') && !urlLower.endsWith('.cer')) {
+    issues.push({
+      severity: 'low',
+      message: 'BIMI VMC certificate URL does not have typical certificate extension (.pem, .crt, .cer)',
+      recommendation: 'Ensure the URL points to a valid VMC certificate file'
     });
   }
 }
