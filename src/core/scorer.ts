@@ -237,7 +237,7 @@ function calculateIssuePenalty(
 }
 
 /**
- * Generate prioritized recommendations
+ * Generate prioritized recommendations with user-friendly explanations
  */
 export function generateRecommendations(
   spf: SPFResult,
@@ -255,21 +255,21 @@ export function generateRecommendations(
   if (!spf.found) {
     recommendations.push({
       priority: 1,
-      text: 'Add an SPF record to specify authorized email senders'
+      text: '🚨 [緊急] SPFレコードを追加してください - 現在、誰でもあなたのドメインを騙ってメールを送信できる状態です'
     });
   }
 
   if (!dmarc.found) {
     recommendations.push({
       priority: 2,
-      text: 'Add a DMARC record to define your email authentication policy'
+      text: '🚨 [緊急] DMARCレコードを追加してください - なりすましメール対策の要となる設定が未実施です'
     });
   }
 
   if (!dkim.found) {
     recommendations.push({
       priority: 3,
-      text: 'Configure DKIM signing for your email service'
+      text: '⚠️ [重要] DKIMを設定してください - メールの改ざん検知ができず、配信率が低下する可能性があります'
     });
   }
 
@@ -277,34 +277,35 @@ export function generateRecommendations(
   if (spf.found && spf.mechanism === '+all') {
     recommendations.push({
       priority: 4,
-      text: 'Change SPF from +all to -all to block unauthorized senders'
+      text: '🚨 [緊急] SPFの「+all」を「-all」に変更してください - 現在の設定はすべての送信元を許可しており、実質無防備です'
     });
   } else if (spf.found && spf.mechanism === '~all') {
     recommendations.push({
       priority: 7,
-      text: 'Consider changing SPF from ~all (softfail) to -all (hardfail)'
+      text: '💡 [推奨] SPFの「~all」を「-all」に強化することを検討してください - softfailからhardfailにすることで、不正送信をより確実にブロックできます'
     });
   }
 
   if (dmarc.found && dmarc.policy === 'none') {
     recommendations.push({
       priority: 5,
-      text: 'Upgrade DMARC policy from none to quarantine or reject'
+      text: '⚠️ [重要] DMARCポリシーを「none」から「quarantine」または「reject」に変更してください - 現在は監視モードのみで、なりすましメールをブロックできていません'
     });
   } else if (dmarc.found && dmarc.policy === 'quarantine') {
     recommendations.push({
       priority: 8,
-      text: 'Consider upgrading DMARC policy from quarantine to reject'
+      text: '💡 [推奨] DMARCポリシーを「quarantine」から「reject」への移行を検討してください - 認証失敗メールを迷惑メールフォルダではなく完全に拒否できます'
     });
   }
 
   // Medium: Improvements
   if (dkim.found) {
-    const hasWeakKey = dkim.selectors.some(s => s.keyLength && s.keyLength < 2048);
-    if (hasWeakKey) {
+    const weakKeys = dkim.selectors.filter(s => s.keyLength && s.keyLength < 2048 && s.keyType !== 'ed25519');
+    if (weakKeys.length > 0) {
+      const selectors = weakKeys.map(s => s.selector).join(', ');
       recommendations.push({
         priority: 6,
-        text: 'Upgrade DKIM keys to 2048-bit for better security'
+        text: `⚠️ [重要] DKIMキーを2048ビット以上に更新してください（対象: ${selectors}）- 1024ビットは現在の基準では脆弱とされています`
       });
     }
   }
@@ -312,14 +313,14 @@ export function generateRecommendations(
   if (dmarc.found && !dmarc.reportingEnabled) {
     recommendations.push({
       priority: 9,
-      text: 'Add DMARC reporting (rua=) to monitor authentication failures'
+      text: '💡 [推奨] DMARCレポート（rua=）を設定してください - 認証失敗の状況を把握でき、問題の早期発見に役立ちます'
     });
   }
 
   if (spf.found && spf.lookupCount && spf.lookupCount > 7) {
     recommendations.push({
       priority: 10,
-      text: `Reduce SPF DNS lookups (${spf.lookupCount}/10) to avoid evaluation failures`
+      text: `⚠️ [注意] SPFのDNS参照回数が多すぎます（${spf.lookupCount}/10回）- 上限を超えると認証が失敗し、メールが届かなくなる恐れがあります`
     });
   }
 
@@ -327,19 +328,19 @@ export function generateRecommendations(
   if (!mtaSts?.found) {
     recommendations.push({
       priority: 11,
-      text: 'Add MTA-STS to enforce TLS for incoming mail'
+      text: '💡 [推奨] MTA-STSを設定してください - 受信メールのTLS暗号化を強制し、中間者攻撃を防止できます'
     });
   } else if (mtaSts.policy?.mode === 'testing') {
     recommendations.push({
       priority: 14,
-      text: 'Upgrade MTA-STS from testing to enforce mode'
+      text: '💡 [推奨] MTA-STSをtestingモードからenforceモードに移行してください - テストで問題なければ本番適用しましょう'
     });
   }
 
   if (!tlsRpt?.found) {
     recommendations.push({
       priority: 12,
-      text: 'Add TLS-RPT to receive TLS connection failure reports'
+      text: '💡 [推奨] TLS-RPTを設定してください - TLS接続の失敗レポートを受け取れるようになり、配信問題の把握に役立ちます'
     });
   }
 
@@ -348,12 +349,12 @@ export function generateRecommendations(
     if (!bimi?.found) {
       recommendations.push({
         priority: 15,
-        text: 'Add BIMI to display your brand logo in email clients'
+        text: '✨ [オプション] BIMIを設定すると、対応メールクライアントで御社のロゴが表示されます - ブランド認知度向上に効果的です'
       });
     } else if (bimi.found && !bimi.certificateUrl) {
       recommendations.push({
         priority: 16,
-        text: 'Add a VMC certificate to BIMI for wider logo display support'
+        text: '✨ [オプション] VMC証明書を追加すると、より多くのメールクライアントでロゴが表示されます（Gmail等で必須）'
       });
     }
   }

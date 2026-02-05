@@ -102,7 +102,8 @@ describe('generateRecommendations', () => {
   it('recommends reporting when not configured', () => {
     const dmarc: DMARCResult = { found: true, policy: 'reject', reportingEnabled: false, issues: [] };
     const recs = generateRecommendations(baseSPF, baseDKIM, dmarc, baseMX);
-    expect(recs.some(r => r.toLowerCase().includes('report'))).toBe(true);
+    // Check for Japanese 'レポート' or English 'rua'
+    expect(recs.some(r => r.includes('レポート') || r.includes('rua'))).toBe(true);
   });
 
   it('orders recommendations by priority', () => {
