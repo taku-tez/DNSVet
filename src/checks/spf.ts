@@ -3,11 +3,9 @@
  * RFC 7208 compliant implementation
  */
 
-import dns from 'node:dns/promises';
 import type { SPFResult, Issue } from '../types.js';
-
-const MAX_DNS_LOOKUPS = 10;
-const MAX_RECURSION_DEPTH = 10; // Prevent infinite loops
+import { dns, isDNSNotFoundError, resolveTxtRecords, filterRecordsByPrefix } from '../utils/dns.js';
+import { SPF_MAX_DNS_LOOKUPS, SPF_MAX_RECURSION_DEPTH, DNS_PREFIX } from '../constants.js';
 
 export async function checkSPF(domain: string): Promise<SPFResult> {
   const issues: Issue[] = [];
@@ -83,16 +81,16 @@ export async function checkSPF(domain: string): Promise<SPFResult> {
     }
 
     // Check DNS lookup count
-    if (lookupCount > MAX_DNS_LOOKUPS) {
+    if (lookupCount > SPF_MAX_DNS_LOOKUPS) {
       issues.push({
         severity: 'high',
-        message: `SPF record exceeds DNS lookup limit (${lookupCount}/${MAX_DNS_LOOKUPS})`,
+        message: `SPF record exceeds DNS lookup limit (${lookupCount}/${SPF_MAX_DNS_LOOKUPS})`,
         recommendation: 'Reduce the number of include/redirect mechanisms or flatten the SPF record'
       });
     } else if (lookupCount > 7) {
       issues.push({
         severity: 'medium',
-        message: `SPF record is close to DNS lookup limit (${lookupCount}/${MAX_DNS_LOOKUPS})`,
+        message: `SPF record is close to DNS lookup limit (${lookupCount}/${SPF_MAX_DNS_LOOKUPS})`,
         recommendation: 'Consider flattening SPF record to avoid future issues'
       });
     }
@@ -115,8 +113,7 @@ export async function checkSPF(domain: string): Promise<SPFResult> {
       issues
     };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOTFOUND' ||
-        (err as NodeJS.ErrnoException).code === 'ENODATA') {
+    if (isDNSNotFoundError(err)) {
       return {
         found: false,
         issues: [{
@@ -164,7 +161,7 @@ async function countDNSLookupsRecursive(
   visited: Set<string>,
   depth: number
 ): Promise<LookupResult> {
-  if (depth > MAX_RECURSION_DEPTH) {
+  if (depth > SPF_MAX_RECURSION_DEPTH) {
     return { count: 0, loopDetected: true };
   }
 

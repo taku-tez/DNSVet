@@ -3,33 +3,29 @@
  * RFC 7489 compliant implementation
  */
 
-import dns from 'node:dns/promises';
 import type { DMARCResult, Issue } from '../types.js';
+import { isDNSNotFoundError, resolveTxtRecords, filterRecordsByPrefix } from '../utils/dns.js';
+import { DNS_PREFIX, DNS_SUBDOMAIN, VALID_DMARC_TAGS, DMARC_POLICIES } from '../constants.js';
 
-// Valid DMARC tags per RFC 7489
-const VALID_DMARC_TAGS = new Set([
-  'v', 'p', 'sp', 'rua', 'ruf', 'adkim', 'aspf', 'fo', 'rf', 'ri', 'pct'
-]);
+const NO_DMARC_RESULT: DMARCResult = {
+  found: false,
+  issues: [{
+    severity: 'critical',
+    message: 'No DMARC record found',
+    recommendation: 'Add a DMARC record to specify email authentication policy'
+  }]
+};
 
 export async function checkDMARC(domain: string): Promise<DMARCResult> {
   const issues: Issue[] = [];
-  const dmarcDomain = `_dmarc.${domain}`;
+  const dmarcDomain = `${DNS_SUBDOMAIN.DMARC}.${domain}`;
 
   try {
-    const txtRecords = await dns.resolveTxt(dmarcDomain);
-    const dmarcRecords = txtRecords
-      .map(r => r.join(''))
-      .filter(r => r.toLowerCase().trim().startsWith('v=dmarc1'));
+    const txtRecords = await resolveTxtRecords(dmarcDomain);
+    const dmarcRecords = filterRecordsByPrefix(txtRecords, DNS_PREFIX.DMARC);
 
     if (dmarcRecords.length === 0) {
-      return {
-        found: false,
-        issues: [{
-          severity: 'critical',
-          message: 'No DMARC record found',
-          recommendation: 'Add a DMARC record to specify email authentication policy'
-        }]
-      };
+      return NO_DMARC_RESULT;
     }
 
     if (dmarcRecords.length > 1) {
@@ -71,13 +67,14 @@ export async function checkDMARC(domain: string): Promise<DMARCResult> {
     const pct = parsedTags.tags.get('pct') ? parseInt(parsedTags.tags.get('pct')!, 10) : undefined;
 
     // Check policy strength
+    const validPolicies: readonly string[] = DMARC_POLICIES;
     if (!policy) {
       issues.push({
         severity: 'critical',
         message: 'DMARC record has no policy (p=) specified',
         recommendation: 'Add a policy: p=reject for maximum protection'
       });
-    } else if (!['none', 'quarantine', 'reject'].includes(policy)) {
+    } else if (!validPolicies.includes(policy)) {
       issues.push({
         severity: 'critical',
         message: `Invalid DMARC policy value: "${policy}"`,
@@ -180,16 +177,8 @@ export async function checkDMARC(domain: string): Promise<DMARCResult> {
       issues
     };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOTFOUND' ||
-        (err as NodeJS.ErrnoException).code === 'ENODATA') {
-      return {
-        found: false,
-        issues: [{
-          severity: 'critical',
-          message: 'No DMARC record found',
-          recommendation: 'Add a DMARC record to specify email authentication policy'
-        }]
-      };
+    if (isDNSNotFoundError(err)) {
+      return NO_DMARC_RESULT;
     }
     throw err;
   }

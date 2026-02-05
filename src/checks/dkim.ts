@@ -2,10 +2,11 @@
  * DKIM (DomainKeys Identified Mail) checker
  */
 
-import dns from 'node:dns/promises';
 import crypto from 'node:crypto';
 import type { DKIMResult, DKIMSelector, Issue } from '../types.js';
-import { COMMON_DKIM_SELECTORS } from '../types.js';
+import { dns, safeResolveTxt } from '../utils/dns.js';
+import { extractTag } from '../utils/parser.js';
+import { COMMON_DKIM_SELECTORS, DKIM_WEAK_KEY_BITS, DKIM_STRONG_KEY_BITS, DNS_SUBDOMAIN } from '../constants.js';
 
 export async function checkDKIM(
   domain: string, 
@@ -48,22 +49,21 @@ export async function checkDKIM(
   for (const sel of foundSelectors) {
     // ed25519 keys are always 256-bit and considered strong
     if (sel.keyType === 'ed25519') {
-      // ed25519 is modern and secure, no issue needed
       continue;
     }
     
     // RSA key length checks
-    if (sel.keyLength && sel.keyLength < 1024) {
+    if (sel.keyLength && sel.keyLength < DKIM_WEAK_KEY_BITS) {
       issues.push({
         severity: 'critical',
         message: `DKIM selector "${sel.selector}" uses weak RSA key (${sel.keyLength}-bit)`,
-        recommendation: 'Upgrade to at least 2048-bit RSA key or use ed25519'
+        recommendation: `Upgrade to at least ${DKIM_STRONG_KEY_BITS}-bit RSA key or use ed25519`
       });
-    } else if (sel.keyLength && sel.keyLength < 2048) {
+    } else if (sel.keyLength && sel.keyLength < DKIM_STRONG_KEY_BITS) {
       issues.push({
         severity: 'medium',
-        message: `DKIM selector "${sel.selector}" uses 1024-bit RSA key`,
-        recommendation: 'Consider upgrading to 2048-bit RSA key or ed25519'
+        message: `DKIM selector "${sel.selector}" uses ${DKIM_WEAK_KEY_BITS}-bit RSA key`,
+        recommendation: `Consider upgrading to ${DKIM_STRONG_KEY_BITS}-bit RSA key or ed25519`
       });
     }
   }

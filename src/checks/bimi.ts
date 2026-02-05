@@ -5,37 +5,30 @@
  * Requires valid DMARC with p=quarantine or p=reject.
  */
 
-import dns from 'node:dns/promises';
-import type { Issue } from '../types.js';
+import type { BIMIResult, Issue } from '../types.js';
+import { isDNSNotFoundError, resolveTxtRecords, filterRecordsByPrefix } from '../utils/dns.js';
+import { extractTag } from '../utils/parser.js';
+import { DNS_PREFIX, DNS_SUBDOMAIN } from '../constants.js';
 
-export interface BIMIResult {
-  found: boolean;
-  record?: string;
-  version?: string;
-  logoUrl?: string;
-  certificateUrl?: string;
-  issues: Issue[];
-}
+const NO_BIMI_RESULT: BIMIResult = {
+  found: false,
+  issues: [{
+    severity: 'info',
+    message: 'No BIMI record found',
+    recommendation: 'Consider adding BIMI to display your brand logo in email clients'
+  }]
+};
 
 export async function checkBIMI(domain: string): Promise<BIMIResult> {
   const issues: Issue[] = [];
-  const bimiDomain = `default._bimi.${domain}`;
+  const bimiDomain = `${DNS_SUBDOMAIN.BIMI}.${domain}`;
 
   try {
-    const txtRecords = await dns.resolveTxt(bimiDomain);
-    const bimiRecords = txtRecords
-      .map(r => r.join(''))
-      .filter(r => r.toLowerCase().startsWith('v=bimi1'));
+    const txtRecords = await resolveTxtRecords(bimiDomain);
+    const bimiRecords = filterRecordsByPrefix(txtRecords, DNS_PREFIX.BIMI);
 
     if (bimiRecords.length === 0) {
-      return {
-        found: false,
-        issues: [{
-          severity: 'info',
-          message: 'No BIMI record found',
-          recommendation: 'Consider adding BIMI to display your brand logo in email clients'
-        }]
-      };
+      return NO_BIMI_RESULT;
     }
 
     if (bimiRecords.length > 1) {
@@ -51,26 +44,8 @@ export async function checkBIMI(domain: string): Promise<BIMIResult> {
     const logoUrl = extractTag(record, 'l');
     const certificateUrl = extractTag(record, 'a');
 
-    // Check logo URL
-    if (!logoUrl) {
-      issues.push({
-        severity: 'high',
-        message: 'BIMI record missing logo URL (l=)',
-        recommendation: 'Add l= tag with URL to your SVG logo'
-      });
-    } else if (!logoUrl.startsWith('https://')) {
-      issues.push({
-        severity: 'high',
-        message: 'BIMI logo URL must use HTTPS',
-        recommendation: 'Update logo URL to use HTTPS'
-      });
-    } else if (!logoUrl.endsWith('.svg')) {
-      issues.push({
-        severity: 'medium',
-        message: 'BIMI logo should be SVG Tiny PS format',
-        recommendation: 'Use SVG Tiny PS format for maximum compatibility'
-      });
-    }
+    // Validate logo URL
+    validateLogoUrl(logoUrl, issues);
 
     // Check VMC certificate (optional but recommended)
     if (!certificateUrl) {
@@ -90,23 +65,31 @@ export async function checkBIMI(domain: string): Promise<BIMIResult> {
       issues
     };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOTFOUND' ||
-        (err as NodeJS.ErrnoException).code === 'ENODATA') {
-      return {
-        found: false,
-        issues: [{
-          severity: 'info',
-          message: 'No BIMI record found',
-          recommendation: 'Consider adding BIMI to display your brand logo in email clients'
-        }]
-      };
+    if (isDNSNotFoundError(err)) {
+      return NO_BIMI_RESULT;
     }
     throw err;
   }
 }
 
-function extractTag(record: string, tag: string): string | undefined {
-  const regex = new RegExp(`${tag}=([^;\\s]+)`, 'i');
-  const match = record.match(regex);
-  return match ? match[1] : undefined;
+function validateLogoUrl(logoUrl: string | undefined, issues: Issue[]): void {
+  if (!logoUrl) {
+    issues.push({
+      severity: 'high',
+      message: 'BIMI record missing logo URL (l=)',
+      recommendation: 'Add l= tag with URL to your SVG logo'
+    });
+  } else if (!logoUrl.startsWith('https://')) {
+    issues.push({
+      severity: 'high',
+      message: 'BIMI logo URL must use HTTPS',
+      recommendation: 'Update logo URL to use HTTPS'
+    });
+  } else if (!logoUrl.toLowerCase().endsWith('.svg')) {
+    issues.push({
+      severity: 'medium',
+      message: 'BIMI logo should be SVG Tiny PS format',
+      recommendation: 'Use SVG Tiny PS format for maximum compatibility'
+    });
+  }
 }

@@ -5,17 +5,10 @@
  * when other mail servers try to send email to your domain.
  */
 
-import dns from 'node:dns/promises';
-import type { Issue } from '../types.js';
-
-export interface TLSRPTResult {
-  found: boolean;
-  record?: string;
-  version?: string;
-  rua?: string[];
-  endpointStatus?: EndpointStatus[];
-  issues: Issue[];
-}
+import type { TLSRPTResult, Issue } from '../types.js';
+import { dns, isDNSNotFoundError, resolveTxtRecords, filterRecordsByPrefix } from '../utils/dns.js';
+import { extractTag, extractTagValues, isValidEmail } from '../utils/parser.js';
+import { DNS_PREFIX, DNS_SUBDOMAIN, DEFAULT_HTTP_TIMEOUT_MS } from '../constants.js';
 
 export interface EndpointStatus {
   endpoint: string;
@@ -29,28 +22,28 @@ export interface TLSRPTOptions {
   timeout?: number;
 }
 
+const NO_TLS_RPT_RESULT: TLSRPTResult = {
+  found: false,
+  issues: [{
+    severity: 'low',
+    message: 'No TLS-RPT record found',
+    recommendation: 'Add TLS-RPT to receive reports about TLS connection failures'
+  }]
+};
+
 export async function checkTLSRPT(
   domain: string, 
   options: TLSRPTOptions = {}
-): Promise<TLSRPTResult> {
+): Promise<TLSRPTResult & { endpointStatus?: EndpointStatus[] }> {
   const issues: Issue[] = [];
-  const tlsrptDomain = `_smtp._tls.${domain}`;
+  const tlsrptDomain = `${DNS_SUBDOMAIN.TLS_RPT}.${domain}`;
 
   try {
-    const txtRecords = await dns.resolveTxt(tlsrptDomain);
-    const tlsrptRecords = txtRecords
-      .map(r => r.join(''))
-      .filter(r => r.toLowerCase().startsWith('v=tlsrpt'));
+    const txtRecords = await resolveTxtRecords(tlsrptDomain);
+    const tlsrptRecords = filterRecordsByPrefix(txtRecords, DNS_PREFIX.TLS_RPT);
 
     if (tlsrptRecords.length === 0) {
-      return {
-        found: false,
-        issues: [{
-          severity: 'low',
-          message: 'No TLS-RPT record found',
-          recommendation: 'Add TLS-RPT to receive reports about TLS connection failures'
-        }]
-      };
+      return NO_TLS_RPT_RESULT;
     }
 
     if (tlsrptRecords.length > 1) {
@@ -63,10 +56,10 @@ export async function checkTLSRPT(
 
     const record = tlsrptRecords[0];
     const version = extractTag(record, 'v');
-    const rua = extractReportingAddresses(record);
+    const rua = extractTagValues(record, 'rua');
     const endpointStatus: EndpointStatus[] = [];
 
-    // Check reporting addresses
+    // Validate reporting addresses
     if (rua.length === 0) {
       issues.push({
         severity: 'high',
@@ -74,72 +67,7 @@ export async function checkTLSRPT(
         recommendation: 'Add rua= tag with mailto: or https: reporting endpoints'
       });
     } else {
-      // Validate addresses
-      for (const addr of rua) {
-        if (addr.startsWith('mailto:')) {
-          const email = addr.slice(7);
-          // Basic email format validation
-          if (!email.includes('@') || !email.includes('.')) {
-            issues.push({
-              severity: 'medium',
-              message: `Invalid email in TLS-RPT reporting address: ${addr}`,
-              recommendation: 'Use a valid email address format'
-            });
-            endpointStatus.push({ endpoint: addr, type: 'mailto', reachable: false, error: 'Invalid email format' });
-          } else {
-            // Check if the domain part has MX records
-            const emailDomain = email.split('@')[1];
-            if (emailDomain && options.verifyEndpoints) {
-              try {
-                await dns.resolveMx(emailDomain);
-                endpointStatus.push({ endpoint: addr, type: 'mailto', reachable: true });
-              } catch {
-                issues.push({
-                  severity: 'low',
-                  message: `TLS-RPT reporting email domain "${emailDomain}" has no MX records`,
-                  recommendation: 'Verify the email address can receive reports'
-                });
-                endpointStatus.push({ endpoint: addr, type: 'mailto', reachable: false, error: 'No MX records' });
-              }
-            } else {
-              endpointStatus.push({ endpoint: addr, type: 'mailto' });
-            }
-          }
-        } else if (addr.startsWith('https://')) {
-          // Validate HTTPS endpoint
-          if (options.verifyEndpoints) {
-            const status = await verifyHttpsEndpoint(addr, options.timeout || 5000);
-            endpointStatus.push(status);
-            
-            if (!status.reachable) {
-              issues.push({
-                severity: 'medium',
-                message: `TLS-RPT HTTPS endpoint unreachable: ${addr}`,
-                recommendation: `Verify the endpoint is accessible: ${status.error || 'unknown error'}`
-              });
-            }
-          } else {
-            // Basic URL validation
-            try {
-              new URL(addr);
-              endpointStatus.push({ endpoint: addr, type: 'https' });
-            } catch {
-              issues.push({
-                severity: 'medium',
-                message: `Invalid HTTPS URL in TLS-RPT: ${addr}`,
-                recommendation: 'Use a valid HTTPS URL'
-              });
-              endpointStatus.push({ endpoint: addr, type: 'https', reachable: false, error: 'Invalid URL' });
-            }
-          }
-        } else {
-          issues.push({
-            severity: 'medium',
-            message: `Invalid TLS-RPT reporting address: ${addr}`,
-            recommendation: 'Use mailto: or https: scheme for reporting addresses'
-          });
-        }
-      }
+      await validateEndpoints(rua, options, issues, endpointStatus);
     }
 
     return {
@@ -151,24 +79,107 @@ export async function checkTLSRPT(
       issues
     };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOTFOUND' ||
-        (err as NodeJS.ErrnoException).code === 'ENODATA') {
-      return {
-        found: false,
-        issues: [{
-          severity: 'low',
-          message: 'No TLS-RPT record found',
-          recommendation: 'Add TLS-RPT to receive reports about TLS connection failures'
-        }]
-      };
+    if (isDNSNotFoundError(err)) {
+      return NO_TLS_RPT_RESULT;
     }
     throw err;
   }
 }
 
-/**
- * Verify HTTPS endpoint reachability with HEAD request
- */
+async function validateEndpoints(
+  rua: string[],
+  options: TLSRPTOptions,
+  issues: Issue[],
+  endpointStatus: EndpointStatus[]
+): Promise<void> {
+  const timeout = options.timeout || DEFAULT_HTTP_TIMEOUT_MS;
+
+  for (const addr of rua) {
+    if (addr.startsWith('mailto:')) {
+      await validateMailtoEndpoint(addr, options, issues, endpointStatus);
+    } else if (addr.startsWith('https://')) {
+      await validateHttpsEndpoint(addr, timeout, options, issues, endpointStatus);
+    } else {
+      issues.push({
+        severity: 'medium',
+        message: `Invalid TLS-RPT reporting address: ${addr}`,
+        recommendation: 'Use mailto: or https: scheme for reporting addresses'
+      });
+    }
+  }
+}
+
+async function validateMailtoEndpoint(
+  addr: string,
+  options: TLSRPTOptions,
+  issues: Issue[],
+  endpointStatus: EndpointStatus[]
+): Promise<void> {
+  const email = addr.slice(7);
+  
+  if (!isValidEmail(email)) {
+    issues.push({
+      severity: 'medium',
+      message: `Invalid email in TLS-RPT reporting address: ${addr}`,
+      recommendation: 'Use a valid email address format'
+    });
+    endpointStatus.push({ endpoint: addr, type: 'mailto', reachable: false, error: 'Invalid email format' });
+    return;
+  }
+
+  // Check if the domain part has MX records
+  const emailDomain = email.split('@')[1];
+  if (emailDomain && options.verifyEndpoints) {
+    try {
+      await dns.resolveMx(emailDomain);
+      endpointStatus.push({ endpoint: addr, type: 'mailto', reachable: true });
+    } catch {
+      issues.push({
+        severity: 'low',
+        message: `TLS-RPT reporting email domain "${emailDomain}" has no MX records`,
+        recommendation: 'Verify the email address can receive reports'
+      });
+      endpointStatus.push({ endpoint: addr, type: 'mailto', reachable: false, error: 'No MX records' });
+    }
+  } else {
+    endpointStatus.push({ endpoint: addr, type: 'mailto' });
+  }
+}
+
+async function validateHttpsEndpoint(
+  addr: string,
+  timeout: number,
+  options: TLSRPTOptions,
+  issues: Issue[],
+  endpointStatus: EndpointStatus[]
+): Promise<void> {
+  if (options.verifyEndpoints) {
+    const status = await verifyHttpsEndpoint(addr, timeout);
+    endpointStatus.push(status);
+    
+    if (!status.reachable) {
+      issues.push({
+        severity: 'medium',
+        message: `TLS-RPT HTTPS endpoint unreachable: ${addr}`,
+        recommendation: `Verify the endpoint is accessible: ${status.error || 'unknown error'}`
+      });
+    }
+  } else {
+    // Basic URL validation
+    try {
+      new URL(addr);
+      endpointStatus.push({ endpoint: addr, type: 'https' });
+    } catch {
+      issues.push({
+        severity: 'medium',
+        message: `Invalid HTTPS URL in TLS-RPT: ${addr}`,
+        recommendation: 'Use a valid HTTPS URL'
+      });
+      endpointStatus.push({ endpoint: addr, type: 'https', reachable: false, error: 'Invalid URL' });
+    }
+  }
+}
+
 async function verifyHttpsEndpoint(url: string, timeout: number): Promise<EndpointStatus> {
   try {
     const controller = new AbortController();
@@ -182,10 +193,10 @@ async function verifyHttpsEndpoint(url: string, timeout: number): Promise<Endpoi
     
     clearTimeout(timeoutId);
     
-    // Accept 2xx, 3xx, 405 (Method Not Allowed - POST-only endpoints), 
-    // and 400 (Bad Request - expects specific format)
+    // Accept various status codes that indicate the endpoint is responsive
     const acceptableStatus = [200, 201, 202, 204, 301, 302, 303, 307, 308, 400, 405];
-    const reachable = acceptableStatus.includes(response.status) || (response.status >= 200 && response.status < 400);
+    const reachable = acceptableStatus.includes(response.status) || 
+                      (response.status >= 200 && response.status < 400);
     
     return {
       endpoint: url,
@@ -216,20 +227,4 @@ async function verifyHttpsEndpoint(url: string, timeout: number): Promise<Endpoi
       error: errorMsg
     };
   }
-}
-
-function extractTag(record: string, tag: string): string | undefined {
-  const regex = new RegExp(`${tag}=([^;\\s]+)`, 'i');
-  const match = record.match(regex);
-  return match ? match[1] : undefined;
-}
-
-function extractReportingAddresses(record: string): string[] {
-  const match = record.match(/rua=([^;]+)/i);
-  if (!match) return [];
-
-  return match[1]
-    .split(',')
-    .map(addr => addr.trim())
-    .filter(addr => addr.length > 0);
 }
