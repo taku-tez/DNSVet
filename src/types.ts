@@ -15,6 +15,7 @@ export interface Issue {
 
 export interface SPFResult {
   found: boolean;
+  skipped?: boolean;
   record?: string;
   mechanism?: string; // -all, ~all, ?all, +all
   lookupCount?: number;
@@ -32,12 +33,14 @@ export interface DKIMSelector {
 
 export interface DKIMResult {
   found: boolean;
+  skipped?: boolean;
   selectors: DKIMSelector[];
   issues: Issue[];
 }
 
 export interface DMARCResult {
   found: boolean;
+  skipped?: boolean;
   record?: string;
   policy?: 'none' | 'quarantine' | 'reject';
   subdomainPolicy?: 'none' | 'quarantine' | 'reject';
@@ -55,12 +58,14 @@ export interface MXRecord {
 
 export interface MXResult {
   found: boolean;
+  skipped?: boolean;
   records: MXRecord[];
   issues: Issue[];
 }
 
 export interface BIMIResult {
   found: boolean;
+  skipped?: boolean;
   record?: string;
   version?: string;
   logoUrl?: string;
@@ -70,6 +75,7 @@ export interface BIMIResult {
 
 export interface MTASTSResult {
   found: boolean;
+  skipped?: boolean;
   dnsRecord?: string;
   version?: string;
   id?: string;
@@ -91,6 +97,7 @@ export interface EndpointStatus {
 
 export interface TLSRPTResult {
   found: boolean;
+  skipped?: boolean;
   record?: string;
   version?: string;
   rua?: string[];
@@ -100,6 +107,7 @@ export interface TLSRPTResult {
 
 export interface ARCReadinessResult {
   ready: boolean;
+  skipped?: boolean;
   canSign: boolean;
   canValidate: boolean;
   issues: Issue[];
@@ -107,6 +115,7 @@ export interface ARCReadinessResult {
 
 export interface DNSSECResult {
   enabled: boolean;
+  skipped?: boolean;
   ds?: {
     found: boolean;
     records: Array<{

@@ -40,6 +40,8 @@ interface GradeResult {
   score: number;
 }
 
+const isSkipped = (result?: { skipped?: boolean }): boolean => Boolean(result?.skipped);
+
 /**
  * Calculate grade based on email security configuration
  * 
@@ -76,7 +78,7 @@ export function calculateGrade(
   let score = 0;
 
   // SPF scoring (max 35 points)
-  if (spf.found) {
+  if (!isSkipped(spf) && spf.found) {
     score += 15; // Base points for having SPF
     
     if (spf.mechanism === '-all') {
@@ -95,7 +97,7 @@ export function calculateGrade(
   }
 
   // DKIM scoring (max 25 points)
-  if (dkim.found) {
+  if (!isSkipped(dkim) && dkim.found) {
     score += 15; // Base points for having DKIM
     
     // Check key strength (ed25519 is always considered strong)
@@ -113,7 +115,7 @@ export function calculateGrade(
   }
 
   // DMARC scoring (max 40 points)
-  if (dmarc.found) {
+  if (!isSkipped(dmarc) && dmarc.found) {
     score += 10; // Base points for having DMARC
     
     if (dmarc.policy === 'reject') {
@@ -139,9 +141,9 @@ export function calculateGrade(
   let bonus = 0;
 
   // BIMI bonus (+3 base, +5 with VMC)
-  if (bimi?.found) {
+  if (bimi?.found && !isSkipped(bimi)) {
     // Only award points if DMARC prerequisite is met
-    const dmarcOk = dmarc.found && dmarc.policy && dmarc.policy !== 'none';
+    const dmarcOk = !isSkipped(dmarc) && dmarc.found && dmarc.policy && dmarc.policy !== 'none';
     if (dmarcOk) {
       bonus += 3;
       if (bimi.certificateUrl) {
@@ -151,7 +153,7 @@ export function calculateGrade(
   }
 
   // MTA-STS bonus (+4 enforce, +2 testing)
-  if (mtaSts?.found && mtaSts.policy?.mode) {
+  if (mtaSts?.found && mtaSts.policy?.mode && !isSkipped(mtaSts)) {
     if (mtaSts.policy.mode === 'enforce') {
       bonus += 4;
     } else if (mtaSts.policy.mode === 'testing') {
@@ -160,17 +162,17 @@ export function calculateGrade(
   }
 
   // TLS-RPT bonus (+3)
-  if (tlsRpt?.found && tlsRpt.rua && tlsRpt.rua.length > 0) {
+  if (tlsRpt?.found && tlsRpt.rua && tlsRpt.rua.length > 0 && !isSkipped(tlsRpt)) {
     bonus += 3;
   }
 
   // ARC readiness bonus (+3)
-  if (arc?.ready && arc.canSign) {
+  if (arc?.ready && arc.canSign && !isSkipped(arc)) {
     bonus += 3;
   }
 
   // DNSSEC bonus (+5 with valid chain, +3 enabled only)
-  if (dnssec?.enabled) {
+  if (dnssec?.enabled && !isSkipped(dnssec)) {
     if (dnssec.chainValid) {
       bonus += 5;
     } else {
@@ -222,15 +224,15 @@ function calculateIssuePenalty(
 ): number {
   // Collect all issues
   const allIssues: Issue[] = [
-    ...spf.issues,
-    ...dkim.issues,
-    ...dmarc.issues,
-    ...mx.issues,
-    ...(bimi?.issues || []),
-    ...(mtaSts?.issues || []),
-    ...(tlsRpt?.issues || []),
-    ...(arc?.issues || []),
-    ...(dnssec?.issues || []),
+    ...(!isSkipped(spf) ? spf.issues : []),
+    ...(!isSkipped(dkim) ? dkim.issues : []),
+    ...(!isSkipped(dmarc) ? dmarc.issues : []),
+    ...(!isSkipped(mx) ? mx.issues : []),
+    ...(!isSkipped(bimi) ? (bimi?.issues || []) : []),
+    ...(!isSkipped(mtaSts) ? (mtaSts?.issues || []) : []),
+    ...(!isSkipped(tlsRpt) ? (tlsRpt?.issues || []) : []),
+    ...(!isSkipped(arc) ? (arc?.issues || []) : []),
+    ...(!isSkipped(dnssec) ? (dnssec?.issues || []) : []),
   ];
 
   // Calculate total penalty (cap per severity to prevent excessive deductions)
@@ -276,21 +278,21 @@ export function generateRecommendations(
   const recommendations: Array<{ priority: number; text: string }> = [];
 
   // Critical: Missing records
-  if (!spf.found) {
+  if (!isSkipped(spf) && !spf.found) {
     recommendations.push({
       priority: 1,
       text: '🚨 [緊急] SPFレコードを追加してください - 現在、誰でもあなたのドメインを騙ってメールを送信できる状態です'
     });
   }
 
-  if (!dmarc.found) {
+  if (!isSkipped(dmarc) && !dmarc.found) {
     recommendations.push({
       priority: 2,
       text: '🚨 [緊急] DMARCレコードを追加してください - なりすましメール対策の要となる設定が未実施です'
     });
   }
 
-  if (!dkim.found) {
+  if (!isSkipped(dkim) && !dkim.found) {
     recommendations.push({
       priority: 3,
       text: '⚠️ [重要] DKIMを設定してください - メールの改ざん検知ができず、配信率が低下する可能性があります'
@@ -298,24 +300,24 @@ export function generateRecommendations(
   }
 
   // High: Weak configurations
-  if (spf.found && spf.mechanism === '+all') {
+  if (!isSkipped(spf) && spf.found && spf.mechanism === '+all') {
     recommendations.push({
       priority: 4,
       text: '🚨 [緊急] SPFの「+all」を「-all」に変更してください - 現在の設定はすべての送信元を許可しており、実質無防備です'
     });
-  } else if (spf.found && spf.mechanism === '~all') {
+  } else if (!isSkipped(spf) && spf.found && spf.mechanism === '~all') {
     recommendations.push({
       priority: 7,
       text: '💡 [推奨] SPFの「~all」を「-all」に強化することを検討してください - softfailからhardfailにすることで、不正送信をより確実にブロックできます'
     });
   }
 
-  if (dmarc.found && dmarc.policy === 'none') {
+  if (!isSkipped(dmarc) && dmarc.found && dmarc.policy === 'none') {
     recommendations.push({
       priority: 5,
       text: '⚠️ [重要] DMARCポリシーを「none」から「quarantine」または「reject」に変更してください - 現在は監視モードのみで、なりすましメールをブロックできていません'
     });
-  } else if (dmarc.found && dmarc.policy === 'quarantine') {
+  } else if (!isSkipped(dmarc) && dmarc.found && dmarc.policy === 'quarantine') {
     recommendations.push({
       priority: 8,
       text: '💡 [推奨] DMARCポリシーを「quarantine」から「reject」への移行を検討してください - 認証失敗メールを迷惑メールフォルダではなく完全に拒否できます'
@@ -323,7 +325,7 @@ export function generateRecommendations(
   }
 
   // Medium: Improvements
-  if (dkim.found) {
+  if (!isSkipped(dkim) && dkim.found) {
     const weakKeys = dkim.selectors.filter(s => s.keyLength && s.keyLength < 2048 && s.keyType !== 'ed25519');
     if (weakKeys.length > 0) {
       const selectors = weakKeys.map(s => s.selector).join(', ');
@@ -334,14 +336,14 @@ export function generateRecommendations(
     }
   }
 
-  if (dmarc.found && !dmarc.reportingEnabled) {
+  if (!isSkipped(dmarc) && dmarc.found && !dmarc.reportingEnabled) {
     recommendations.push({
       priority: 9,
       text: '💡 [推奨] DMARCレポート（rua=）を設定してください - 認証失敗の状況を把握でき、問題の早期発見に役立ちます'
     });
   }
 
-  if (spf.found && spf.lookupCount && spf.lookupCount > 7) {
+  if (!isSkipped(spf) && spf.found && spf.lookupCount && spf.lookupCount > 7) {
     recommendations.push({
       priority: 10,
       text: `⚠️ [注意] SPFのDNS参照回数が多すぎます（${spf.lookupCount}/10回）- 上限を超えると認証が失敗し、メールが届かなくなる恐れがあります`
@@ -349,19 +351,19 @@ export function generateRecommendations(
   }
 
   // Advanced feature recommendations
-  if (!mtaSts?.found) {
+  if (!isSkipped(mtaSts) && !mtaSts?.found) {
     recommendations.push({
       priority: 11,
       text: '💡 [推奨] MTA-STSを設定してください - 受信メールのTLS暗号化を強制し、中間者攻撃を防止できます'
     });
-  } else if (mtaSts.policy?.mode === 'testing') {
+  } else if (!isSkipped(mtaSts) && mtaSts.policy?.mode === 'testing') {
     recommendations.push({
       priority: 14,
       text: '💡 [推奨] MTA-STSをtestingモードからenforceモードに移行してください - テストで問題なければ本番適用しましょう'
     });
   }
 
-  if (!tlsRpt?.found) {
+  if (!isSkipped(tlsRpt) && !tlsRpt?.found) {
     recommendations.push({
       priority: 12,
       text: '💡 [推奨] TLS-RPTを設定してください - TLS接続の失敗レポートを受け取れるようになり、配信問題の把握に役立ちます'
@@ -369,13 +371,13 @@ export function generateRecommendations(
   }
 
   // BIMI recommendation (only if DMARC is properly configured)
-  if (dmarc.found && dmarc.policy && dmarc.policy !== 'none') {
-    if (!bimi?.found) {
+  if (!isSkipped(dmarc) && dmarc.found && dmarc.policy && dmarc.policy !== 'none') {
+    if (!isSkipped(bimi) && !bimi?.found) {
       recommendations.push({
         priority: 15,
         text: '✨ [オプション] BIMIを設定すると、対応メールクライアントで御社のロゴが表示されます - ブランド認知度向上に効果的です'
       });
-    } else if (bimi.found && !bimi.certificateUrl) {
+    } else if (!isSkipped(bimi) && bimi.found && !bimi.certificateUrl) {
       recommendations.push({
         priority: 16,
         text: '✨ [オプション] VMC証明書を追加すると、より多くのメールクライアントでロゴが表示されます（Gmail等で必須）'
@@ -384,17 +386,17 @@ export function generateRecommendations(
   }
 
   // DNSSEC recommendations
-  if (!dnssec?.enabled) {
+  if (!isSkipped(dnssec) && !dnssec?.enabled) {
     recommendations.push({
       priority: 13,
       text: '💡 [推奨] DNSSECを有効にしてください - DNSスプーフィングやキャッシュポイズニングからドメインを保護できます'
     });
-  } else if (dnssec.enabled && !dnssec.chainValid) {
+  } else if (!isSkipped(dnssec) && dnssec.enabled && !dnssec.chainValid) {
     recommendations.push({
       priority: 6,
       text: '⚠️ [重要] DNSSECのチェーンオブトラストが不完全です - DS/DNSKEYレコードの設定を確認してください'
     });
-  } else {
+  } else if (!isSkipped(dnssec)) {
     // Check for weak algorithms
     const weakAlgos = dnssec.ds?.records.filter(r => r.strength === 'weak' || r.strength === 'deprecated');
     if (weakAlgos && weakAlgos.length > 0) {
@@ -413,8 +415,8 @@ export function generateRecommendations(
   }
 
   // ARC recommendations
-  if (arc && !arc.ready) {
-    if (!dkim.found) {
+  if (arc && !arc.ready && !isSkipped(arc)) {
+    if (!isSkipped(dkim) && !dkim.found) {
       recommendations.push({
         priority: 14,
         text: '💡 [推奨] DKIMを設定するとARC署名が可能になります - メーリングリストや転送メールの認証維持に有効です'
