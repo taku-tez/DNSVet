@@ -58,6 +58,7 @@ program
   .option('-v, --verbose', 'Show detailed information')
   .option('-t, --timeout <ms>', 'Timeout per check in milliseconds', '10000')
   .option('--selectors <selectors>', 'Custom DKIM selectors (comma-separated)')
+  .option('--verify-tlsrpt-endpoints', 'Verify TLS-RPT endpoint reachability')
   .action(async (domain: string, options) => {
     // Normalize and validate domain
     const normalizedDomain = validateDomainOrExit(domain);
@@ -66,6 +67,7 @@ program
       dkimSelectors: options.selectors?.split(',').map((s: string) => s.trim()).filter(Boolean),
       verbose: options.verbose,
       timeout: parseIntOrDefault(options.timeout, DEFAULT_CHECK_TIMEOUT_MS),
+      verifyTlsRptEndpoints: options.verifyTlsrptEndpoints,
     };
 
     const result = await analyzeDomain(normalizedDomain, scanOptions);
@@ -108,6 +110,7 @@ program
   .option('-c, --concurrency <n>', 'Concurrent checks', '5')
   .option('-t, --timeout <ms>', 'Timeout per check in milliseconds', '10000')
   .option('--selectors <selectors>', 'Custom DKIM selectors (comma-separated)')
+  .option('--verify-tlsrpt-endpoints', 'Verify TLS-RPT endpoint reachability')
   .action(async (options) => {
     let domains: string[] = [];
     const sources: string[] = [];
@@ -250,6 +253,7 @@ program
       concurrency: parseIntOrDefault(options.concurrency, DEFAULT_CONCURRENCY),
       dkimSelectors: options.selectors?.split(',').map((s: string) => s.trim()).filter(Boolean),
       timeout: parseIntOrDefault(options.timeout, DEFAULT_CHECK_TIMEOUT_MS),
+      verifyTlsRptEndpoints: options.verifyTlsrptEndpoints,
     };
 
     const results = await analyzeMultiple(domains, scanOptions);
@@ -388,6 +392,7 @@ program
   .option('-v, --verbose', 'Show detailed information')
   .option('-t, --timeout <ms>', 'Timeout per check in milliseconds', '10000')
   .option('--selectors <selectors>', 'Custom DKIM selectors (comma-separated)')
+  .option('--verify-tlsrpt-endpoints', 'Verify TLS-RPT endpoint reachability')
   .action(async (domain: string | undefined, options) => {
     if (!domain) {
       program.help();
@@ -401,6 +406,7 @@ program
       dkimSelectors: options.selectors?.split(',').map((s: string) => s.trim()).filter(Boolean),
       verbose: options.verbose,
       timeout: parseIntOrDefault(options.timeout, DEFAULT_CHECK_TIMEOUT_MS),
+      verifyTlsRptEndpoints: options.verifyTlsrptEndpoints,
     };
 
     const result = await analyzeDomain(normalizedDomain, scanOptions);

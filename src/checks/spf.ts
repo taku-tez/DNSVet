@@ -187,7 +187,7 @@ async function countDNSLookupsRecursive(
   // - mx: 1 lookup (+ implicit A lookups, but those don't count against limit)
   // - ptr: 1 lookup (deprecated)
   // - exists: 1 lookup
-  // - redirect: 0 lookups itself, but the target record's lookups count
+  // - redirect: 1 lookup + recursive lookups from target record
 
   // Count 'a' mechanisms (a, a:domain, a:domain/prefix)
   const aMatches = lower.match(/\ba(:|\/|\s|$)/g);
@@ -234,8 +234,11 @@ async function countDNSLookupsRecursive(
   }
 
   // Process redirect= modifier (replaces the current record)
+  // RFC 7208: redirect requires a DNS lookup to fetch the target SPF record
   const redirectMatch = lower.match(/redirect=([^\s]+)/);
   if (redirectMatch) {
+    count++; // The redirect itself requires 1 DNS lookup (TXT query)
+    
     const redirectDomain = redirectMatch[1];
     try {
       const redirectTxt = await dns.resolveTxt(redirectDomain);
@@ -254,7 +257,7 @@ async function countDNSLookupsRecursive(
         if (recursiveResult.loopDetected) loopDetected = true;
       }
     } catch {
-      // DNS lookup failed
+      // DNS lookup failed, but we still counted the lookup attempt
     }
   }
 

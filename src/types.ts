@@ -130,6 +130,7 @@ export interface ScanOptions {
   dkimSelectors?: string[];
   timeout?: number;
   concurrency?: number;
+  verifyTlsRptEndpoints?: boolean;
 }
 
 export interface CloudSource {

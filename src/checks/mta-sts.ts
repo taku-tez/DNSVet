@@ -246,7 +246,8 @@ function parseMTASTSPolicy(text: string): MTASTSPolicy {
         }
         break;
       case 'mx':
-        policy.mx!.push(value);
+        // Normalize: lowercase and remove trailing dot for consistent comparison
+        policy.mx!.push(value.toLowerCase().replace(/\.$/, ''));
         break;
       case 'max_age': {
         const maxAge = parseInt(value, 10);

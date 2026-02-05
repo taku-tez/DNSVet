@@ -51,7 +51,8 @@ export async function analyzeDomain(
   }
 
   // Run all checks in parallel with optional timeout using allSettled
-  const dkimSelectors = options.dkimSelectors || COMMON_DKIM_SELECTORS;
+  // Fall back to default selectors if not specified or empty array
+  const dkimSelectors = options.dkimSelectors?.length ? options.dkimSelectors : COMMON_DKIM_SELECTORS;
   const timeout = options.timeout || 10000;
   
   const wrapWithTimeout = async <T>(promise: Promise<T>, name: string): Promise<T> => {
@@ -75,7 +76,7 @@ export async function analyzeDomain(
     wrapWithTimeout(checkMX(domain), 'MX'),
     wrapWithTimeout(checkBIMI(domain), 'BIMI'),
     wrapWithTimeout(checkMTASTS(domain), 'MTA-STS'),
-    wrapWithTimeout(checkTLSRPT(domain), 'TLS-RPT'),
+    wrapWithTimeout(checkTLSRPT(domain, { verifyEndpoints: options.verifyTlsRptEndpoints }), 'TLS-RPT'),
   ]);
 
   // Extract results, creating failed results for rejected promises

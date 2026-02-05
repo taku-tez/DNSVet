@@ -33,9 +33,27 @@ export async function checkMX(domain: string): Promise<MXResult> {
       priority: r.priority
     }));
 
-  // Run validation checks
+  // Check for Null MX (RFC 7505) - domain explicitly does not receive email
+  const hasNullMX = records.some(r => r.exchange === '.' || r.exchange === '');
+  
+  if (hasNullMX) {
+    // Null MX means the domain intentionally does not accept mail
+    // Skip other validations (redundancy, priority, provider) as they don't apply
+    issues.push({
+      severity: 'info',
+      message: 'Null MX record (RFC 7505) - domain does not accept email',
+      recommendation: 'This is an intentional configuration to reject email'
+    });
+    
+    return {
+      found: true,
+      records,
+      issues
+    };
+  }
+
+  // Run validation checks (only for non-Null MX domains)
   checkRedundancy(records, issues);
-  checkNullMX(records, issues);
   checkPriorityDistribution(records, issues);
   checkEmailProvider(records, issues);
 
@@ -52,17 +70,6 @@ function checkRedundancy(records: MXRecord[], issues: Issue[]): void {
       severity: 'low',
       message: 'Only one MX record - no redundancy',
       recommendation: 'Consider adding backup MX servers'
-    });
-  }
-}
-
-function checkNullMX(records: MXRecord[], issues: Issue[]): void {
-  const hasNullMX = records.some(r => r.exchange === '.' || r.exchange === '');
-  if (hasNullMX) {
-    issues.push({
-      severity: 'info',
-      message: 'Null MX record present - domain explicitly does not receive mail',
-      recommendation: 'This is intentional if the domain should not receive email'
     });
   }
 }

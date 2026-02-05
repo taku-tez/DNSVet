@@ -7,7 +7,7 @@
 
 import type { TLSRPTResult, Issue } from '../types.js';
 import { dns, isDNSNotFoundError, resolveTxtRecords, filterRecordsByPrefix } from '../utils/dns.js';
-import { extractTag, extractTagValues, isValidEmail } from '../utils/parser.js';
+import { extractTag, extractTagValues, isValidEmail, parseMailtoUri } from '../utils/parser.js';
 import { DNS_PREFIX, DNS_SUBDOMAIN, DEFAULT_HTTP_TIMEOUT_MS } from '../constants.js';
 
 export interface EndpointStatus {
@@ -130,9 +130,10 @@ async function validateMailtoEndpoint(
   issues: Issue[],
   endpointStatus: EndpointStatus[]
 ): Promise<void> {
-  const email = addr.slice(7);
+  // Parse mailto: URI, handling optional query parameters (e.g., mailto:addr?subject=...)
+  const email = parseMailtoUri(addr);
   
-  if (!isValidEmail(email)) {
+  if (!email || !isValidEmail(email)) {
     issues.push({
       severity: 'medium',
       message: `Invalid email in TLS-RPT reporting address: ${addr}`,
