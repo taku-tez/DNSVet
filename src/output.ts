@@ -61,7 +61,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
       sectionLines.push(...formatIssues(result.spf.issues));
     }
     return sectionLines;
-  }, result.spf.issues));
+  }, result.spf.issues, result.spf.skipped));
 
   // DKIM
   lines.push(formatSection('DKIM', result.dkim.found, () => {
@@ -77,7 +77,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
       sectionLines.push(...formatIssues(result.dkim.issues));
     }
     return sectionLines;
-  }, result.dkim.issues));
+  }, result.dkim.issues, result.dkim.skipped));
 
   // DMARC
   lines.push(formatSection('DMARC', result.dmarc.found, () => {
@@ -101,7 +101,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
       sectionLines.push(...formatIssues(result.dmarc.issues));
     }
     return sectionLines;
-  }, result.dmarc.issues));
+  }, result.dmarc.issues, result.dmarc.skipped));
 
   // MX
   lines.push(formatSection('MX', result.mx.found, () => {
@@ -129,7 +129,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
       sectionLines.push(...formatIssues(result.mx.issues.filter(i => !i.message.includes('provider detected'))));
     }
     return sectionLines;
-  }, result.mx.issues));
+  }, result.mx.issues, result.mx.skipped));
 
   // BIMI (optional)
   if (result.bimi) {
@@ -153,7 +153,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
         sectionLines.push(...formatIssues(result.bimi?.issues || []));
       }
       return sectionLines;
-    }, result.bimi?.issues));
+    }, result.bimi?.issues, result.bimi?.skipped));
   }
 
   // MTA-STS (optional)
@@ -176,7 +176,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
         sectionLines.push(...formatIssues(result.mtaSts?.issues || []));
       }
       return sectionLines;
-    }, result.mtaSts?.issues));
+    }, result.mtaSts?.issues, result.mtaSts?.skipped));
   }
 
   // TLS-RPT (optional)
@@ -208,7 +208,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
         sectionLines.push(...formatIssues(result.tlsRpt?.issues || []));
       }
       return sectionLines;
-    }, result.tlsRpt?.issues));
+    }, result.tlsRpt?.issues, result.tlsRpt?.skipped));
   }
 
   // ARC Readiness (optional)
@@ -225,7 +225,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
         sectionLines.push(...formatIssues(result.arc?.issues || []));
       }
       return sectionLines;
-    }, result.arc?.issues));
+    }, result.arc?.issues, result.arc?.skipped));
   }
 
   // DNSSEC (optional)
@@ -250,7 +250,7 @@ export function formatResult(result: DomainResult, verbose = false): string {
         sectionLines.push(...formatIssues(result.dnssec?.issues || []));
       }
       return sectionLines;
-    }, result.dnssec?.issues));
+    }, result.dnssec?.issues, result.dnssec?.skipped));
   }
 
   // All Issues (verbose mode)
@@ -389,13 +389,18 @@ function formatSection(
   name: string, 
   found: boolean, 
   detailsFn: () => string[],
-  notFoundIssues?: Issue[]
+  notFoundIssues?: Issue[],
+  skipped?: boolean
 ): string {
   const lines: string[] = [];
-  const icon = found ? CHECK : FAIL;
-  const status = found ? 'Found' : 'Not found';
+  const icon = skipped ? INFO : found ? CHECK : FAIL;
+  const status = skipped ? 'Skipped' : found ? 'Found' : 'Not found';
   
   lines.push(`${BOLD}${name}${RESET}   ${icon} ${status}`);
+  
+  if (skipped) {
+    return lines.join('\n');
+  }
   
   if (found) {
     lines.push(...detailsFn());
