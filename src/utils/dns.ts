@@ -35,6 +35,7 @@ function getResolver(): dns.Resolver | typeof dns {
  * Check if error is a DNS "not found" error
  */
 export function isDNSNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
   const error = err as NodeJS.ErrnoException;
   return error.code === 'ENOTFOUND' || error.code === 'ENODATA';
 }
