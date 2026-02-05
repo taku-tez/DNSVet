@@ -105,6 +105,27 @@ export interface ARCReadinessResult {
   issues: Issue[];
 }
 
+export interface DNSSECResult {
+  enabled: boolean;
+  ds?: {
+    found: boolean;
+    records: Array<{
+      keyTag: number;
+      algorithm: number;
+      algorithmName: string;
+      digestType: number;
+      digestTypeName: string;
+    }>;
+  };
+  dnskey?: {
+    found: boolean;
+    kskCount: number;
+    zskCount: number;
+  };
+  chainValid?: boolean;
+  issues: Issue[];
+}
+
 export interface DomainResult {
   domain: string;
   grade: Grade;
@@ -118,6 +139,7 @@ export interface DomainResult {
   mtaSts?: MTASTSResult;
   tlsRpt?: TLSRPTResult;
   arc?: ARCReadinessResult;
+  dnssec?: DNSSECResult;
   recommendations: string[];
   error?: string;
 }

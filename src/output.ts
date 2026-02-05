@@ -228,6 +228,31 @@ export function formatResult(result: DomainResult, verbose = false): string {
     }, result.arc?.issues));
   }
 
+  // DNSSEC (optional)
+  if (result.dnssec) {
+    lines.push(formatSection('DNSSEC', result.dnssec.enabled, () => {
+      const sectionLines: string[] = [];
+      if (result.dnssec?.enabled) {
+        if (result.dnssec.chainValid) {
+          sectionLines.push(`   ${CHECK} Chain of trust: Valid`);
+        } else {
+          sectionLines.push(`   ${WARN} Chain of trust: May be incomplete`);
+        }
+        if (result.dnssec.ds?.found && result.dnssec.ds.records.length > 0) {
+          const ds = result.dnssec.ds.records[0];
+          sectionLines.push(`   ${INFO} DS: Algorithm ${ds.algorithm} (${ds.algorithmName})`);
+        }
+        if (result.dnssec.dnskey?.found) {
+          sectionLines.push(`   ${INFO} DNSKEY: ${result.dnssec.dnskey.kskCount} KSK + ${result.dnssec.dnskey.zskCount} ZSK`);
+        }
+      }
+      if (verbose) {
+        sectionLines.push(...formatIssues(result.dnssec?.issues || []));
+      }
+      return sectionLines;
+    }, result.dnssec?.issues));
+  }
+
   // All Issues (verbose mode)
   if (verbose) {
     const allIssues = collectAllIssues(result);
@@ -335,6 +360,11 @@ function collectAllIssues(result: DomainResult): CheckIssue[] {
   if (result.arc) {
     for (const issue of result.arc.issues) {
       issues.push({ check: 'ARC', issue });
+    }
+  }
+  if (result.dnssec) {
+    for (const issue of result.dnssec.issues) {
+      issues.push({ check: 'DNSSEC', issue });
     }
   }
   

@@ -2,9 +2,9 @@
  * Domain email security analyzer
  */
 
-import { checkSPF, checkDKIM, checkDMARC, checkMX, checkBIMI, checkMTASTS, checkTLSRPT, checkARCReadiness } from '../checks/index.js';
+import { checkSPF, checkDKIM, checkDMARC, checkMX, checkBIMI, checkMTASTS, checkTLSRPT, checkARCReadiness, checkDNSSEC } from '../checks/index.js';
 import { calculateGrade, generateRecommendations } from './scorer.js';
-import type { DomainResult, ScanOptions, SPFResult, DKIMResult, DMARCResult, MXResult, BIMIResult, MTASTSResult, TLSRPTResult } from '../types.js';
+import type { DomainResult, ScanOptions, SPFResult, DKIMResult, DMARCResult, MXResult, BIMIResult, MTASTSResult, TLSRPTResult, DNSSECResult } from '../types.js';
 import { COMMON_DKIM_SELECTORS, normalizeDomain } from '../types.js';
 import { isValidDomain } from '../utils/domain.js';
 
@@ -75,7 +75,7 @@ export async function analyzeDomain(
   };
 
   // Use Promise.allSettled to handle individual failures gracefully
-  const [spfResult, dkimResult, dmarcResult, mxResult, bimiResult, mtaStsResult, tlsRptResult] = await Promise.allSettled([
+  const [spfResult, dkimResult, dmarcResult, mxResult, bimiResult, mtaStsResult, tlsRptResult, dnssecResult] = await Promise.allSettled([
     wrapWithTimeout(checkSPF(domain), 'SPF'),
     wrapWithTimeout(checkDKIM(domain, dkimSelectors), 'DKIM'),
     wrapWithTimeout(checkDMARC(domain), 'DMARC'),
@@ -83,6 +83,7 @@ export async function analyzeDomain(
     wrapWithTimeout(checkBIMI(domain), 'BIMI'),
     wrapWithTimeout(checkMTASTS(domain, { timeout }), 'MTA-STS'),
     wrapWithTimeout(checkTLSRPT(domain, { verifyEndpoints: options.verifyTlsRptEndpoints, timeout }), 'TLS-RPT'),
+    wrapWithTimeout(checkDNSSEC(domain), 'DNSSEC'),
   ]);
 
   // Extract results, creating failed results for rejected promises
@@ -113,6 +114,11 @@ export async function analyzeDomain(
   const tlsRpt: TLSRPTResult = tlsRptResult.status === 'fulfilled'
     ? tlsRptResult.value
     : createFailedResult<TLSRPTResult>('TLS-RPT', tlsRptResult.reason?.message || 'Unknown error', {});
+
+  // DNSSEC result (uses different structure, handle separately)
+  const dnssec: DNSSECResult | undefined = dnssecResult.status === 'fulfilled'
+    ? dnssecResult.value
+    : { enabled: false, issues: [{ severity: 'high' as const, message: `DNSSEC check failed: ${dnssecResult.reason?.message || 'Unknown error'}` }] };
 
   // ARC readiness is derived from other checks
   const arc = checkARCReadiness(spf, dkim, dmarc);
@@ -172,6 +178,7 @@ export async function analyzeDomain(
   if (bimiResult.status === 'rejected') errors.push(`BIMI: ${bimiResult.reason?.message}`);
   if (mtaStsResult.status === 'rejected') errors.push(`MTA-STS: ${mtaStsResult.reason?.message}`);
   if (tlsRptResult.status === 'rejected') errors.push(`TLS-RPT: ${tlsRptResult.reason?.message}`);
+  if (dnssecResult.status === 'rejected') errors.push(`DNSSEC: ${dnssecResult.reason?.message}`);
 
   return {
     domain,
@@ -186,6 +193,7 @@ export async function analyzeDomain(
     mtaSts,
     tlsRpt,
     arc,
+    dnssec,
     recommendations,
     ...(errors.length > 0 ? { error: errors.join('; ') } : {}),
   };
