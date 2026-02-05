@@ -366,12 +366,19 @@ function formatSection(
   if (found) {
     lines.push(...detailsFn());
   } else if (notFoundIssues && notFoundIssues.length > 0) {
-    // Show the most important issue when not found (non-verbose mode)
-    const topIssue = notFoundIssues.find(i => i.severity === 'critical') ||
-                     notFoundIssues.find(i => i.severity === 'high') ||
-                     notFoundIssues[0];
-    if (topIssue && topIssue.recommendation) {
-      lines.push(`   ${DIM}→ ${topIssue.recommendation}${RESET}`);
+    // Show only the first critical/high issue to keep output concise.
+    const severeIssue = notFoundIssues.find(i => i.severity === 'critical' || i.severity === 'high');
+    if (severeIssue) {
+      lines.push(`   ${FAIL} ${severeIssue.message}`);
+      if (severeIssue.recommendation) {
+        lines.push(`   ${DIM}→ ${severeIssue.recommendation}${RESET}`);
+      }
+    } else {
+      // Show the most important issue when not found (non-verbose mode)
+      const topIssue = notFoundIssues[0];
+      if (topIssue && topIssue.recommendation) {
+        lines.push(`   ${DIM}→ ${topIssue.recommendation}${RESET}`);
+      }
     }
   }
   
