@@ -146,6 +146,46 @@ export async function checkDMARC(domain: string): Promise<DMARCResult> {
       }
     }
 
+    const sourceDomain = domain.toLowerCase();
+    const externalReportingDomains = new Set<string>();
+    for (const addr of [...rua, ...ruf]) {
+      const reportingDomain = extractReportingDomain(addr);
+      if (!reportingDomain) {
+        continue;
+      }
+      const normalizedReportingDomain = reportingDomain.toLowerCase();
+      if (normalizedReportingDomain !== sourceDomain) {
+        externalReportingDomains.add(normalizedReportingDomain);
+      }
+    }
+
+    for (const reportingDomain of externalReportingDomains) {
+      const authorizationDomain = `${reportingDomain}._report._dmarc.${sourceDomain}`;
+      try {
+        const authorizationRecords = await resolveTxtRecords(authorizationDomain);
+        const hasAuthorization = authorizationRecords.some(record =>
+          record.toLowerCase().includes('v=dmarc1')
+        );
+        if (!hasAuthorization) {
+          issues.push({
+            severity: 'high',
+            message: `外部レポート先への認可が無い: ${reportingDomain}`,
+            recommendation: `TXTレコード "${authorizationDomain}" に "v=DMARC1" を追加してください`
+          });
+        }
+      } catch (err) {
+        if (isDNSNotFoundError(err)) {
+          issues.push({
+            severity: 'high',
+            message: `外部レポート先への認可が無い: ${reportingDomain}`,
+            recommendation: `TXTレコード "${authorizationDomain}" に "v=DMARC1" を追加してください`
+          });
+        } else {
+          throw err;
+        }
+      }
+    }
+
     // Check percentage
     if (pct !== undefined) {
       if (isNaN(pct) || pct < 0 || pct > 100) {
@@ -253,4 +293,26 @@ function parseReportingAddresses(value: string | undefined): string[] {
     .split(',')
     .map(addr => addr.trim())
     .filter(addr => addr.length > 0);
+}
+
+function extractReportingDomain(address: string): string | null {
+  if (address.startsWith('mailto:')) {
+    const mailtoTarget = address.slice('mailto:'.length).split('?')[0];
+    const atIndex = mailtoTarget.lastIndexOf('@');
+    if (atIndex > -1 && atIndex < mailtoTarget.length - 1) {
+      return mailtoTarget.slice(atIndex + 1);
+    }
+    return null;
+  }
+
+  if (address.startsWith('https://') || address.startsWith('http://')) {
+    try {
+      const url = new URL(address);
+      return url.hostname || null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
