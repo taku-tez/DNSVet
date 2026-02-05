@@ -2,7 +2,7 @@
  * Domain email security analyzer
  */
 
-import { checkSPF, checkDKIM, checkDMARC, checkMX } from '../checks/index.js';
+import { checkSPF, checkDKIM, checkDMARC, checkMX, checkBIMI, checkMTASTS, checkTLSRPT, checkARCReadiness } from '../checks/index.js';
 import { calculateGrade, generateRecommendations } from './scorer.js';
 import type { DomainResult, ScanOptions } from '../types.js';
 import { COMMON_DKIM_SELECTORS } from '../types.js';
@@ -25,12 +25,18 @@ export async function analyzeDomain(
     // Run all checks in parallel
     const dkimSelectors = options.dkimSelectors || COMMON_DKIM_SELECTORS;
     
-    const [spf, dkim, dmarc, mx] = await Promise.all([
+    const [spf, dkim, dmarc, mx, bimi, mtaSts, tlsRpt] = await Promise.all([
       checkSPF(domain),
       checkDKIM(domain, dkimSelectors),
       checkDMARC(domain),
       checkMX(domain),
+      checkBIMI(domain),
+      checkMTASTS(domain),
+      checkTLSRPT(domain),
     ]);
+
+    // ARC readiness is derived from other checks
+    const arc = checkARCReadiness(spf, dkim, dmarc);
 
     const { grade, score } = calculateGrade(spf, dkim, dmarc, mx);
     const recommendations = generateRecommendations(spf, dkim, dmarc, mx);
@@ -44,6 +50,10 @@ export async function analyzeDomain(
       dkim,
       dmarc,
       mx,
+      bimi,
+      mtaSts,
+      tlsRpt,
+      arc,
       recommendations,
     };
   } catch (err) {

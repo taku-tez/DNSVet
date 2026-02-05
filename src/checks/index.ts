@@ -2,3 +2,7 @@ export { checkSPF } from './spf.js';
 export { checkDKIM } from './dkim.js';
 export { checkDMARC } from './dmarc.js';
 export { checkMX } from './mx.js';
+export { checkBIMI } from './bimi.js';
+export { checkMTASTS } from './mta-sts.js';
+export { checkTLSRPT } from './tls-rpt.js';
+export { checkARCReadiness } from './arc.js';

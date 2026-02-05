@@ -11,6 +11,7 @@ export {
   CloudflareSource,
   getRoute53Domains,
   getCloudDNSDomains,
+  getCloudDNSDomainsOrg,
   getAzureDNSDomains,
   getCloudflareDomains,
 } from './sources/index.js';

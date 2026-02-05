@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { analyzeDomain, analyzeMultiple } from './core/index.js';
 import { formatResult, formatSummary } from './output.js';
 import { getRoute53Domains } from './sources/aws.js';
-import { getCloudDNSDomains } from './sources/gcp.js';
+import { getCloudDNSDomains, getCloudDNSDomainsOrg } from './sources/gcp.js';
 import { getAzureDNSDomains } from './sources/azure.js';
 import { getCloudflareDomains } from './sources/cloudflare.js';
 import type { ScanOptions } from './types.js';
@@ -60,7 +60,9 @@ program
   .option('--aws-region <region>', 'AWS region')
   .option('--aws-role-arn <arn>', 'AWS IAM role to assume')
   .option('--gcp', 'Scan all Google Cloud DNS zones')
-  .option('--gcp-project <project>', 'GCP project ID')
+  .option('--gcp-org', 'Scan all projects in GCP organization')
+  .option('--gcp-org-id <id>', 'GCP organization ID (optional with --gcp-org)')
+  .option('--gcp-project <project>', 'GCP project ID (single project)')
   .option('--gcp-key-file <path>', 'GCP service account key file')
   .option('--gcp-impersonate <account>', 'GCP service account to impersonate')
   .option('--azure', 'Scan all Azure DNS zones')
@@ -112,18 +114,37 @@ program
       }
     }
 
-    if (options.gcp) {
-      console.error('Fetching domains from Google Cloud DNS...');
-      try {
-        const gcpDomains = await getCloudDNSDomains({ 
-          project: options.gcpProject,
-          keyFile: options.gcpKeyFile,
-          impersonateServiceAccount: options.gcpImpersonate,
-        });
-        domains.push(...gcpDomains);
-        sources.push(`GCP Cloud DNS (${gcpDomains.length})`);
-      } catch (err) {
-        console.error(`GCP Error: ${(err as Error).message}`);
+    if (options.gcp || options.gcpOrg) {
+      const gcpOpts = {
+        project: options.gcpProject,
+        keyFile: options.gcpKeyFile,
+        impersonateServiceAccount: options.gcpImpersonate,
+      };
+
+      if (options.gcpOrg || !options.gcpProject) {
+        // Org-wide scan
+        console.error('Fetching domains from GCP organization (scanning all projects)...');
+        try {
+          const result = await getCloudDNSDomainsOrg({
+            ...gcpOpts,
+            orgId: options.gcpOrgId,
+            verbose: true,
+          });
+          domains.push(...result.domains);
+          sources.push(`GCP Cloud DNS (${result.domains.length} domains from ${result.projectsWithZones.length} projects)`);
+        } catch (err) {
+          console.error(`GCP Error: ${(err as Error).message}`);
+        }
+      } else {
+        // Single project scan
+        console.error('Fetching domains from Google Cloud DNS...');
+        try {
+          const gcpDomains = await getCloudDNSDomains(gcpOpts);
+          domains.push(...gcpDomains);
+          sources.push(`GCP Cloud DNS (${gcpDomains.length})`);
+        } catch (err) {
+          console.error(`GCP Error: ${(err as Error).message}`);
+        }
       }
     }
 
@@ -204,6 +225,8 @@ program
   .option('--aws-profile <profile>', 'AWS profile to use')
   .option('--aws-region <region>', 'AWS region')
   .option('--gcp', 'List Google Cloud DNS zones')
+  .option('--gcp-org', 'List zones from all GCP projects')
+  .option('--gcp-org-id <id>', 'GCP organization ID')
   .option('--gcp-project <project>', 'GCP project ID')
   .option('--gcp-key-file <path>', 'GCP service account key file')
   .option('--gcp-impersonate <account>', 'GCP service account to impersonate')
@@ -232,13 +255,26 @@ program
       }
     }
 
-    if (options.gcp) {
+    if (options.gcp || options.gcpOrg) {
       try {
-        allDomains['gcp'] = await getCloudDNSDomains({ 
+        const gcpOpts = {
           project: options.gcpProject,
           keyFile: options.gcpKeyFile,
           impersonateServiceAccount: options.gcpImpersonate,
-        });
+        };
+
+        if (options.gcpOrg || !options.gcpProject) {
+          console.error('Scanning all GCP projects...');
+          const result = await getCloudDNSDomainsOrg({
+            ...gcpOpts,
+            orgId: options.gcpOrgId,
+            verbose: true,
+          });
+          allDomains['gcp'] = result.domains;
+          console.error(`Found ${result.domains.length} domains in ${result.projectsWithZones.length} projects`);
+        } else {
+          allDomains['gcp'] = await getCloudDNSDomains(gcpOpts);
+        }
       } catch (err) {
         console.error(`GCP: ${(err as Error).message}`);
         allDomains['gcp'] = [];

@@ -59,6 +59,44 @@ export interface MXResult {
   issues: Issue[];
 }
 
+export interface BIMIResult {
+  found: boolean;
+  record?: string;
+  version?: string;
+  logoUrl?: string;
+  certificateUrl?: string;
+  issues: Issue[];
+}
+
+export interface MTASTSResult {
+  found: boolean;
+  dnsRecord?: string;
+  version?: string;
+  id?: string;
+  policy?: {
+    version?: string;
+    mode?: 'enforce' | 'testing' | 'none';
+    mx?: string[];
+    maxAge?: number;
+  };
+  issues: Issue[];
+}
+
+export interface TLSRPTResult {
+  found: boolean;
+  record?: string;
+  version?: string;
+  rua?: string[];
+  issues: Issue[];
+}
+
+export interface ARCReadinessResult {
+  ready: boolean;
+  canSign: boolean;
+  canValidate: boolean;
+  issues: Issue[];
+}
+
 export interface DomainResult {
   domain: string;
   grade: Grade;
@@ -68,6 +106,10 @@ export interface DomainResult {
   dkim: DKIMResult;
   dmarc: DMARCResult;
   mx: MXResult;
+  bimi?: BIMIResult;
+  mtaSts?: MTASTSResult;
+  tlsRpt?: TLSRPTResult;
+  arc?: ARCReadinessResult;
   recommendations: string[];
   error?: string;
 }

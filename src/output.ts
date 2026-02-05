@@ -103,6 +103,65 @@ export function formatResult(result: DomainResult, verbose = false): string {
     return sectionLines;
   }));
 
+  // BIMI (optional)
+  if (result.bimi) {
+    lines.push(formatSection('BIMI', result.bimi.found, () => {
+      const sectionLines: string[] = [];
+      if (result.bimi?.logoUrl) {
+        sectionLines.push(`   ${CHECK} Logo: ${truncate(result.bimi.logoUrl, 50)}`);
+      }
+      if (result.bimi?.certificateUrl) {
+        sectionLines.push(`   ${CHECK} VMC: configured`);
+      } else if (result.bimi?.found) {
+        sectionLines.push(`   ${WARN} No VMC certificate`);
+      }
+      return sectionLines;
+    }));
+  }
+
+  // MTA-STS (optional)
+  if (result.mtaSts) {
+    lines.push(formatSection('MTA-STS', result.mtaSts.found, () => {
+      const sectionLines: string[] = [];
+      if (result.mtaSts?.policy?.mode) {
+        const icon = result.mtaSts.policy.mode === 'enforce' ? CHECK :
+                     result.mtaSts.policy.mode === 'testing' ? WARN : FAIL;
+        sectionLines.push(`   ${icon} Mode: ${result.mtaSts.policy.mode}`);
+      }
+      if (result.mtaSts?.policy?.maxAge) {
+        const days = Math.floor(result.mtaSts.policy.maxAge / 86400);
+        sectionLines.push(`   ${INFO} Max age: ${days} days`);
+      }
+      return sectionLines;
+    }));
+  }
+
+  // TLS-RPT (optional)
+  if (result.tlsRpt) {
+    lines.push(formatSection('TLS-RPT', result.tlsRpt.found, () => {
+      const sectionLines: string[] = [];
+      if (result.tlsRpt?.rua && result.tlsRpt.rua.length > 0) {
+        sectionLines.push(`   ${CHECK} Reporting: ${result.tlsRpt.rua.length} endpoint(s)`);
+      }
+      return sectionLines;
+    }));
+  }
+
+  // ARC Readiness (optional)
+  if (result.arc) {
+    const arcStatus = result.arc.ready ? 'Ready' : 'Not ready';
+    lines.push(formatSection('ARC', result.arc.ready, () => {
+      const sectionLines: string[] = [];
+      if (result.arc?.canSign) {
+        sectionLines.push(`   ${CHECK} Can sign ARC headers`);
+      }
+      if (!result.arc?.ready) {
+        sectionLines.push(`   ${WARN} Missing prerequisites for full ARC support`);
+      }
+      return sectionLines;
+    }));
+  }
+
   // Recommendations
   if (result.recommendations.length > 0) {
     lines.push('');
