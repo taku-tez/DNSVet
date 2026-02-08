@@ -1,5 +1,5 @@
 /**
- * MailVet - Email security configuration scanner
+ * DNSVet - Email security configuration scanner
  */
 
 export { analyzeDomain, analyzeMultiple } from './core/index.js';

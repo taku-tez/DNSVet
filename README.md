@@ -74,7 +74,8 @@ dnsvet scan --aws --aws-profile production
 
 # Google Cloud DNS
 dnsvet scan --gcp --gcp-project my-project
-dnsvet scan --gcp --gcp-org 123456789  # Organization-wide
+dnsvet scan --gcp --gcp-org                        # Organization-wide (auto-detect org)
+dnsvet scan --gcp --gcp-org --gcp-org-id 123456789  # Organization-wide (explicit ID)
 
 # Azure DNS
 dnsvet scan --azure
@@ -88,7 +89,7 @@ dnsvet scan --cloudflare --cloudflare-token $CF_TOKEN
 
 ```bash
 dnsvet sources --aws
-dnsvet sources --gcp --gcp-org 123456789
+dnsvet sources --gcp --gcp-org --gcp-org-id 123456789
 dnsvet sources --cloudflare --json
 ```
 
@@ -189,7 +190,7 @@ CLOUDFLARE_API_KEY=xxx
 
 ## Prerequisites
 
-- **Node.js** 18+ (required)
+- **Node.js** 20+ (required)
 - **dig** (bind-utils/dnsutils) - Required for DNSSEC checks. Without it, DNSSEC validation will report a warning but other checks work normally.
 - **aws** CLI - Required for `--aws` source
 - **gcloud** CLI - Required for `--gcp` source

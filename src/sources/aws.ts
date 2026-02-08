@@ -78,7 +78,7 @@ function buildAWSArgs(options: AWSOptions): string[] {
  */
 export async function assumeRole(
   roleArn: string,
-  sessionName = 'mailvet-session',
+  sessionName = 'dnsvet-session',
   options: AWSOptions = {}
 ): Promise<AWSOptions> {
   const envVars = buildAWSEnv(options);
@@ -120,7 +120,7 @@ export async function getRoute53Domains(options: AWSOptions = {}): Promise<strin
   // If roleArn is specified, assume the role first
   if (options.roleArn) {
     try {
-      const assumedCreds = await assumeRole(options.roleArn, 'mailvet-session', options);
+      const assumedCreds = await assumeRole(options.roleArn, 'dnsvet-session', options);
       effectiveOptions = { ...options, ...assumedCreds };
     } catch (err) {
       throw new Error(`Failed to assume role ${options.roleArn}: ${(err as Error).message}`);

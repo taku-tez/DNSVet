@@ -1,5 +1,5 @@
 /**
- * MailVet - Email Security Configuration Scanner
+ * DNSVet - Email Security Configuration Scanner
  * Type definitions
  */
 

@@ -1,5 +1,5 @@
 /**
- * MailVet constants
+ * DNSVet constants
  * Centralized configuration values and limits
  */
 
