@@ -3,7 +3,7 @@
  */
 
 export { analyzeDomain, analyzeMultiple } from './core/index.js';
-export { checkSPF, checkDKIM, checkDMARC, checkMX } from './checks/index.js';
+export { checkSPF, checkDKIM, checkDMARC, checkMX, checkBIMI, checkMTASTS, checkTLSRPT, checkARCReadiness, checkDNSSEC } from './checks/index.js';
 export { 
   AWSSource, 
   GCPSource, 

@@ -148,9 +148,11 @@ describe('analyzeDomain', () => {
       checks: { bimi: false, dnssec: false }
     });
     
-    // BIMI and DNSSEC should not be in the result (or be undefined)
-    expect(result.bimi).toBeUndefined();
-    expect(result.dnssec).toBeUndefined();
+    // BIMI and DNSSEC should be skipped
+    expect(result.bimi?.skipped).toBe(true);
+    expect(result.bimi?.found).toBe(false);
+    expect(result.dnssec?.skipped).toBe(true);
+    expect(result.dnssec?.enabled).toBe(false);
   });
 
   it('should use custom resolver when specified', async () => {
@@ -242,3 +244,22 @@ describe('analyzeMultiple', () => {
     expect(results.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+  it('should not penalize or recommend skipped checks (--only spf)', async () => {
+    const result = await analyzeDomain('example.com', {
+      checks: { spf: true, dkim: false, dmarc: false, mx: false, bimi: false, mtaSts: false, tlsRpt: false, arc: false, dnssec: false }
+    });
+    
+    // Skipped checks should have skipped: true
+    expect(result.dkim.skipped).toBe(true);
+    expect(result.dmarc.skipped).toBe(true);
+    expect(result.mx.skipped).toBe(true);
+    
+    // Recommendations should NOT include DMARC/DKIM/MX suggestions
+    const recText = result.recommendations.join('\n');
+    expect(recText).not.toContain('DMARC');
+    expect(recText).not.toContain('DKIM');
+    expect(recText).not.toContain('MTA-STS');
+    expect(recText).not.toContain('TLS-RPT');
+    expect(recText).not.toContain('DNSSEC');
+  });

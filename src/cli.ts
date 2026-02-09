@@ -466,6 +466,7 @@ program
   .option('-t, --timeout <ms>', 'Timeout per check in milliseconds', '10000')
   .option('--selectors <selectors>', 'Custom DKIM selectors (comma-separated)')
   .option('--verify-tlsrpt-endpoints', 'Verify TLS-RPT endpoint reachability')
+  .option('--resolver <ip>', 'Custom DNS resolver (e.g., 8.8.8.8)')
   .option('--skip <checks>', 'Skip specific checks (comma-separated: spf,dkim,dmarc,mx,bimi,mta-sts,tls-rpt,arc,dnssec)')
   .option('--only <checks>', 'Run only specific checks (comma-separated: spf,dkim,dmarc,mx,bimi,mta-sts,tls-rpt,arc,dnssec)')
   .action(async (domain: string | undefined, options) => {
@@ -482,6 +483,7 @@ program
       verbose: options.verbose,
       timeout: parseIntOrDefault(options.timeout, DEFAULT_CHECK_TIMEOUT_MS),
       verifyTlsRptEndpoints: options.verifyTlsrptEndpoints,
+      resolver: options.resolver,
       checks: parseCheckOptions(options.skip, options.only),
     };
 

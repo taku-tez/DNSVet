@@ -83,14 +83,14 @@ export async function analyzeDomain(
 
   // Build check promises (skip disabled checks)
   const checkPromises = [
-    isEnabled('spf') ? wrapWithTimeout(checkSPF(domain), 'SPF') : Promise.resolve({ found: false, issues: [] } as SPFResult),
-    isEnabled('dkim') ? wrapWithTimeout(checkDKIM(domain, dkimSelectors), 'DKIM') : Promise.resolve({ found: false, selectors: [], issues: [] } as DKIMResult),
-    isEnabled('dmarc') ? wrapWithTimeout(checkDMARC(domain), 'DMARC') : Promise.resolve({ found: false, issues: [] } as DMARCResult),
-    isEnabled('mx') ? wrapWithTimeout(checkMX(domain), 'MX') : Promise.resolve({ found: false, records: [], issues: [] } as MXResult),
-    isEnabled('bimi') ? wrapWithTimeout(checkBIMI(domain), 'BIMI') : Promise.resolve(undefined),
-    isEnabled('mtaSts') ? wrapWithTimeout(checkMTASTS(domain, { timeout }), 'MTA-STS') : Promise.resolve(undefined),
-    isEnabled('tlsRpt') ? wrapWithTimeout(checkTLSRPT(domain, { verifyEndpoints: options.verifyTlsRptEndpoints, timeout }), 'TLS-RPT') : Promise.resolve(undefined),
-    isEnabled('dnssec') ? wrapWithTimeout(checkDNSSEC(domain, { resolver: options.resolver }), 'DNSSEC') : Promise.resolve(undefined),
+    isEnabled('spf') ? wrapWithTimeout(checkSPF(domain), 'SPF') : Promise.resolve({ found: false, skipped: true, issues: [] } as SPFResult),
+    isEnabled('dkim') ? wrapWithTimeout(checkDKIM(domain, dkimSelectors), 'DKIM') : Promise.resolve({ found: false, skipped: true, selectors: [], issues: [] } as DKIMResult),
+    isEnabled('dmarc') ? wrapWithTimeout(checkDMARC(domain), 'DMARC') : Promise.resolve({ found: false, skipped: true, issues: [] } as DMARCResult),
+    isEnabled('mx') ? wrapWithTimeout(checkMX(domain), 'MX') : Promise.resolve({ found: false, skipped: true, records: [], issues: [] } as MXResult),
+    isEnabled('bimi') ? wrapWithTimeout(checkBIMI(domain), 'BIMI') : Promise.resolve({ found: false, skipped: true, issues: [] } as BIMIResult),
+    isEnabled('mtaSts') ? wrapWithTimeout(checkMTASTS(domain, { timeout }), 'MTA-STS') : Promise.resolve({ found: false, skipped: true, issues: [] } as MTASTSResult),
+    isEnabled('tlsRpt') ? wrapWithTimeout(checkTLSRPT(domain, { verifyEndpoints: options.verifyTlsRptEndpoints, timeout }), 'TLS-RPT') : Promise.resolve({ found: false, skipped: true, issues: [] } as TLSRPTResult),
+    isEnabled('dnssec') ? wrapWithTimeout(checkDNSSEC(domain, { resolver: options.resolver }), 'DNSSEC') : Promise.resolve({ enabled: false, skipped: true, issues: [] } as DNSSECResult),
   ] as const;
 
   // Use Promise.allSettled to handle individual failures gracefully
@@ -130,12 +130,10 @@ export async function analyzeDomain(
     ? dnssecResult.value
     : { enabled: false, issues: [{ severity: 'high' as const, message: `DNSSEC check failed: ${dnssecResult.reason?.message || 'Unknown error'}` }] };
 
-  // ARC readiness is derived from other checks
-  // ARC readiness is derived from other checks
-  // Skip ARC if explicitly disabled or if any prerequisite (SPF/DKIM/DMARC) is skipped
+  // ARC readiness is derived from SPF/DKIM/DMARC — skip if any prerequisite is disabled
   const arcSkipped = !isEnabled('arc') || !isEnabled('spf') || !isEnabled('dkim') || !isEnabled('dmarc');
   const arc = arcSkipped 
-    ? { ready: false, canSign: false, canValidate: false, issues: [] }  // Empty result for skipped ARC
+    ? { ready: false, canSign: false, canValidate: false, skipped: true, issues: [] }
     : checkARCReadiness(spf, dkim, dmarc);
 
   // BIMI prerequisite check: requires DMARC quarantine or reject
