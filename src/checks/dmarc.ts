@@ -159,7 +159,8 @@ export async function checkDMARC(domain: string): Promise<DMARCResult> {
   }
 
   for (const reportingDomain of externalReportingDomains) {
-    const authorizationDomain = `${reportingDomain}._report._dmarc.${sourceDomain}`;
+    // RFC 7489 §7.1: <sourceDomain>._report._dmarc.<reportingDomain>
+    const authorizationDomain = `${sourceDomain}._report._dmarc.${reportingDomain}`;
     const authorizationRecords = await cachedResolveTxt(authorizationDomain);
     const hasAuthorization = authorizationRecords.some(record =>
       record.toLowerCase().includes('v=dmarc1')
@@ -167,8 +168,8 @@ export async function checkDMARC(domain: string): Promise<DMARCResult> {
     if (!hasAuthorization) {
       issues.push({
         severity: 'high',
-        message: `外部レポート先への認可が無い: ${reportingDomain}`,
-        recommendation: `TXTレコード "${authorizationDomain}" に "v=DMARC1" を追加してください`
+        message: `External report destination not authorized: ${reportingDomain} (queried ${authorizationDomain})`,
+        recommendation: `Add TXT record "${authorizationDomain}" with value "v=DMARC1" to authorize external reporting`
       });
     }
   }

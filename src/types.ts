@@ -113,23 +113,36 @@ export interface ARCReadinessResult {
   issues: Issue[];
 }
 
+export interface DSRecord {
+  keyTag: number;
+  algorithm: number;
+  algorithmName: string;
+  strength?: 'strong' | 'acceptable' | 'weak' | 'deprecated';
+  digestType: number;
+  digestTypeName: string;
+  digestStrength?: 'strong' | 'acceptable' | 'weak';
+  digest: string;
+}
+
+export interface DNSKEYRecord {
+  flags: number;
+  protocol: number;
+  algorithm: number;
+  algorithmName: string;
+  keyType: 'KSK' | 'ZSK' | 'unknown';
+  publicKey: string;
+}
+
 export interface DNSSECResult {
   enabled: boolean;
   skipped?: boolean;
   ds?: {
     found: boolean;
-    records: Array<{
-      keyTag: number;
-      algorithm: number;
-      algorithmName: string;
-      strength?: 'strong' | 'acceptable' | 'weak' | 'deprecated';
-      digestType: number;
-      digestTypeName: string;
-      digestStrength?: 'strong' | 'acceptable' | 'weak';
-    }>;
+    records: DSRecord[];
   };
   dnskey?: {
     found: boolean;
+    records: DNSKEYRecord[];
     kskCount: number;
     zskCount: number;
   };

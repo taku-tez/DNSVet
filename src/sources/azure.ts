@@ -43,17 +43,30 @@ export class AzureSource implements CloudSource {
  */
 async function ensureAzureAuth(options: AzureOptions): Promise<void> {
   if (options.clientId && options.clientSecret && options.tenantId) {
+    // Use environment variables for authentication to avoid exposing secrets in process arguments.
+    // Azure CLI respects AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID for SP auth.
+    const spEnv = {
+      ...process.env,
+      AZURE_CLIENT_ID: options.clientId,
+      AZURE_CLIENT_SECRET: options.clientSecret,
+      AZURE_TENANT_ID: options.tenantId,
+    };
     try {
       await execFileAsync('az', [
         'login',
         '--service-principal',
         '-u', options.clientId,
-        '-p', options.clientSecret,
         '--tenant', options.tenantId,
         '--output', 'none'
-      ], { timeout: CLI_TIMEOUT_MS });
+      ], { 
+        timeout: CLI_TIMEOUT_MS,
+        env: spEnv,
+      });
     } catch (err) {
-      throw new Error(`Azure service principal login failed: ${(err as Error).message}`);
+      throw new Error(
+        `Azure service principal login failed: ${(err as Error).message}\n` +
+        'Tip: Pre-authenticate with "az login --service-principal" or set AZURE_CLIENT_SECRET env var to avoid exposing secrets in process arguments.'
+      );
     }
   } else if (options.useManagedIdentity) {
     try {

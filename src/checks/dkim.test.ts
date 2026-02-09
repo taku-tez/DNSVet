@@ -103,7 +103,8 @@ describe('checkDKIM', () => {
     const result = await checkDKIM('example.com', ['revoked']);
     
     expect(result.found).toBe(true);
-    // Empty p= may result in 0 or undefined depending on parsing
-    expect(result.selectors[0].keyLength === 0 || result.selectors[0].keyLength === undefined).toBe(true);
+    expect(result.selectors[0].keyLength).toBe(0);
+    // Should have critical issue for revoked key
+    expect(result.issues.some(i => i.severity === 'critical' && i.message.includes('revoked'))).toBe(true);
   });
 });

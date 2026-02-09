@@ -173,12 +173,13 @@ function extractKeyLength(record: string, keyType?: string): number | undefined 
     return 256;
   }
 
-  const match = record.match(/p=([^;\s]+)/i);
-  if (!match) return undefined;
+  // Match p= tag, allowing empty value (revoked key per RFC 6376 §3.6.1)
+  const match = record.match(/p=([^;\s]*)/i);
+  if (!match) return undefined; // p tag missing entirely
 
-  const publicKey = match[1];
-  if (!publicKey || publicKey === '') {
-    return 0; // Revoked key
+  const publicKey = match[1].trim();
+  if (publicKey === '') {
+    return 0; // Revoked key (p= empty)
   }
 
   try {

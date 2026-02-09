@@ -5,7 +5,7 @@
  * through cryptographic signatures.
  */
 
-import type { Issue } from '../types.js';
+import type { Issue, DNSSECResult, DSRecord, DNSKEYRecord } from '../types.js';
 import { dns } from '../utils/dns.js';
 
 // DNSSEC algorithm names (RFC 8624)
@@ -37,41 +37,7 @@ export const DNSKEY_FLAGS = {
   SEP_KEY: 257,     // KSK (Key Signing Key) / Secure Entry Point
 };
 
-export interface DNSSECResult {
-  enabled: boolean;
-  ds?: {
-    found: boolean;
-    records: DSRecord[];
-  };
-  dnskey?: {
-    found: boolean;
-    records: DNSKEYRecord[];
-    kskCount: number;
-    zskCount: number;
-  };
-  chainValid?: boolean;
-  issues: Issue[];
-}
-
-export interface DSRecord {
-  keyTag: number;
-  algorithm: number;
-  algorithmName: string;
-  strength?: 'strong' | 'acceptable' | 'weak' | 'deprecated';
-  digestType: number;
-  digestTypeName: string;
-  digestStrength?: 'strong' | 'acceptable' | 'weak';
-  digest: string;
-}
-
-export interface DNSKEYRecord {
-  flags: number;
-  protocol: number;
-  algorithm: number;
-  algorithmName: string;
-  keyType: 'KSK' | 'ZSK' | 'unknown';
-  publicKey: string;
-}
+// DNSSECResult, DSRecord, DNSKEYRecord are imported from types.ts (single source of truth)
 
 const NO_DNSSEC_RESULT: DNSSECResult = {
   enabled: false,

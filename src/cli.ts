@@ -75,6 +75,11 @@ function validateCheckNamesOrExit(names: string[], label: string): void {
 function parseCheckOptions(skip?: string, only?: string): ScanOptions['checks'] {
   const normalize = (name: string): string => normalizeCheckName(name);
 
+  if (skip && only) {
+    console.error('Error: --skip and --only cannot be used together. Use one or the other.');
+    process.exit(1);
+  }
+
   if (only) {
     // Only run specified checks
     const onlyList = parseCheckList(only);
