@@ -1,5 +1,8 @@
 # DNSVet 🔐
 
+[![npm version](https://img.shields.io/npm/v/dnsvet)](https://www.npmjs.com/package/dnsvet)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 DNS and email security scanner - validates SPF, DKIM, DMARC, DNSSEC, MTA-STS, TLS-RPT, BIMI, and more.
 
 ## Features
@@ -24,6 +27,12 @@ DNS and email security scanner - validates SPF, DKIM, DMARC, DNSSEC, MTA-STS, TL
 - Google Cloud DNS (organization-wide scanning)
 - Azure DNS
 - Cloudflare
+
+## Quick Start
+
+```bash
+npx dnsvet --help
+```
 
 ## Installation
 
@@ -195,6 +204,10 @@ CLOUDFLARE_API_KEY=xxx
 - **aws** CLI - Required for `--aws` source
 - **gcloud** CLI - Required for `--gcp` source
 - **az** CLI - Required for `--azure` source
+
+## Part of xxVet Series
+
+xxVet is a collection of 15 focused security CLI tools. See [full catalog](https://www.notion.so/xxVet-CLI-304b1e6bcbc2817abe62d4aecee9914a).
 
 ## License
 
