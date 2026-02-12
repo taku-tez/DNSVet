@@ -7,3 +7,4 @@ export { checkMTASTS } from './mta-sts.js';
 export { checkTLSRPT } from './tls-rpt.js';
 export { checkARCReadiness } from './arc.js';
 export { checkDNSSEC } from './dnssec.js';
+export { checkWhois } from './whois.js';

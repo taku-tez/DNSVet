@@ -12,6 +12,7 @@ describe('Public API exports', () => {
     expect(typeof dnsvet.checkTLSRPT).toBe('function');
     expect(typeof dnsvet.checkARCReadiness).toBe('function');
     expect(typeof dnsvet.checkDNSSEC).toBe('function');
+    expect(typeof dnsvet.checkWhois).toBe('function');
   });
 
   it('should export analyzer functions', () => {

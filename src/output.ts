@@ -253,6 +253,39 @@ export function formatResult(result: DomainResult, verbose = false): string {
     }, result.dnssec?.issues, result.dnssec?.skipped));
   }
 
+  // WHOIS/Domain Registration (optional)
+  if (result.whois && !result.whois.skipped) {
+    lines.push(formatSection('WHOIS', result.whois.found, () => {
+      const sectionLines: string[] = [];
+      if (result.whois?.found) {
+        if (result.whois.registrar) {
+          sectionLines.push(`   ${INFO} Registrar: ${result.whois.registrar}`);
+        }
+        if (result.whois.expiryDate) {
+          const days = result.whois.daysUntilExpiry;
+          const status = days !== undefined && days < 0 ? ' ❌ EXPIRED' 
+            : days !== undefined && days <= 30 ? ` ⚠️ ${days} days remaining`
+            : days !== undefined ? ` (${days} days remaining)` : '';
+          sectionLines.push(`   ${days !== undefined && days <= 30 ? WARN : CHECK} Expires: ${result.whois.expiryDate.split('T')[0]}${status}`);
+        }
+        if (result.whois.createdDate) {
+          sectionLines.push(`   ${INFO} Created: ${result.whois.createdDate.split('T')[0]}`);
+        }
+        if (result.whois.eppStatus && result.whois.eppStatus.length > 0) {
+          const hasLock = result.whois.eppStatus.some(s => s.includes('TransferProhibited'));
+          sectionLines.push(`   ${hasLock ? CHECK : WARN} Status: ${result.whois.eppStatus.join(', ')}`);
+        }
+        if (verbose && result.whois.nameServers && result.whois.nameServers.length > 0) {
+          sectionLines.push(`   ${INFO} Nameservers: ${result.whois.nameServers.join(', ')}`);
+        }
+      }
+      if (verbose) {
+        sectionLines.push(...formatIssues(result.whois?.issues || []));
+      }
+      return sectionLines;
+    }, result.whois?.issues, result.whois?.skipped));
+  }
+
   // All Issues (verbose mode)
   if (verbose) {
     const allIssues = collectAllIssues(result);
@@ -365,6 +398,11 @@ function collectAllIssues(result: DomainResult): CheckIssue[] {
   if (result.dnssec) {
     for (const issue of result.dnssec.issues) {
       issues.push({ check: 'DNSSEC', issue });
+    }
+  }
+  if (result.whois) {
+    for (const issue of result.whois.issues) {
+      issues.push({ check: 'WHOIS', issue });
     }
   }
   

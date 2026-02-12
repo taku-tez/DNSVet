@@ -150,6 +150,20 @@ export interface DNSSECResult {
   issues: Issue[];
 }
 
+export interface WhoisResult {
+  found: boolean;
+  skipped?: boolean;
+  registrar?: string;
+  createdDate?: string;
+  updatedDate?: string;
+  expiryDate?: string;
+  daysUntilExpiry?: number;
+  eppStatus?: string[];
+  nameServers?: string[];
+  rdapUrl?: string;
+  issues: Issue[];
+}
+
 export interface DomainResult {
   domain: string;
   grade: Grade;
@@ -164,6 +178,7 @@ export interface DomainResult {
   tlsRpt?: TLSRPTResult;
   arc?: ARCReadinessResult;
   dnssec?: DNSSECResult;
+  whois?: WhoisResult;
   recommendations: string[];
   error?: string;
 }
@@ -178,6 +193,7 @@ export interface CheckOptions {
   tlsRpt?: boolean;
   arc?: boolean;
   dnssec?: boolean;
+  whois?: boolean;
 }
 
 export interface ScanOptions {

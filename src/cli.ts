@@ -41,7 +41,7 @@ function validateDomainOrExit(domain: string): string {
   return normalized;
 }
 
-const ALL_CHECKS = ['spf', 'dkim', 'dmarc', 'mx', 'bimi', 'mta-sts', 'tls-rpt', 'arc', 'dnssec'] as const;
+const ALL_CHECKS = ['spf', 'dkim', 'dmarc', 'mx', 'bimi', 'mta-sts', 'tls-rpt', 'arc', 'dnssec', 'whois'] as const;
 const normalizeCheckName = (name: string): string => name.replace(/-/g, '').toLowerCase();
 const keyMap: Record<string, keyof NonNullable<ScanOptions['checks']>> = {
   'spf': 'spf',
@@ -53,6 +53,7 @@ const keyMap: Record<string, keyof NonNullable<ScanOptions['checks']>> = {
   'tlsrpt': 'tlsRpt',
   'arc': 'arc',
   'dnssec': 'dnssec',
+  'whois': 'whois',
 };
 const normalizedChecks = new Set(ALL_CHECKS.map(check => normalizeCheckName(check)));
 

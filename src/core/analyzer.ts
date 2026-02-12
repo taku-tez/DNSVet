@@ -2,9 +2,9 @@
  * Domain email security analyzer
  */
 
-import { checkSPF, checkDKIM, checkDMARC, checkMX, checkBIMI, checkMTASTS, checkTLSRPT, checkARCReadiness, checkDNSSEC } from '../checks/index.js';
+import { checkSPF, checkDKIM, checkDMARC, checkMX, checkBIMI, checkMTASTS, checkTLSRPT, checkARCReadiness, checkDNSSEC, checkWhois } from '../checks/index.js';
 import { calculateGrade, generateRecommendations } from './scorer.js';
-import type { DomainResult, ScanOptions, SPFResult, DKIMResult, DMARCResult, MXResult, BIMIResult, MTASTSResult, TLSRPTResult, DNSSECResult } from '../types.js';
+import type { DomainResult, ScanOptions, SPFResult, DKIMResult, DMARCResult, MXResult, BIMIResult, MTASTSResult, TLSRPTResult, DNSSECResult, WhoisResult } from '../types.js';
 import { COMMON_DKIM_SELECTORS, normalizeDomain } from '../types.js';
 import { isValidDomain, setDnsResolver, clearDnsCache } from '../utils/index.js';
 
@@ -91,10 +91,11 @@ export async function analyzeDomain(
     isEnabled('mtaSts') ? wrapWithTimeout(checkMTASTS(domain, { timeout }), 'MTA-STS') : Promise.resolve({ found: false, skipped: true, issues: [] } as MTASTSResult),
     isEnabled('tlsRpt') ? wrapWithTimeout(checkTLSRPT(domain, { verifyEndpoints: options.verifyTlsRptEndpoints, timeout }), 'TLS-RPT') : Promise.resolve({ found: false, skipped: true, issues: [] } as TLSRPTResult),
     isEnabled('dnssec') ? wrapWithTimeout(checkDNSSEC(domain, { resolver: options.resolver }), 'DNSSEC') : Promise.resolve({ enabled: false, skipped: true, issues: [] } as DNSSECResult),
+    isEnabled('whois') ? wrapWithTimeout(checkWhois(domain, { timeout }), 'WHOIS') : Promise.resolve({ found: false, skipped: true, issues: [] } as WhoisResult),
   ] as const;
 
   // Use Promise.allSettled to handle individual failures gracefully
-  const [spfResult, dkimResult, dmarcResult, mxResult, bimiResult, mtaStsResult, tlsRptResult, dnssecResult] = await Promise.allSettled(checkPromises);
+  const [spfResult, dkimResult, dmarcResult, mxResult, bimiResult, mtaStsResult, tlsRptResult, dnssecResult, whoisResult] = await Promise.allSettled(checkPromises);
 
   // Extract results, creating failed results for rejected promises
   const spf: SPFResult = spfResult.status === 'fulfilled' 
@@ -129,6 +130,11 @@ export async function analyzeDomain(
   const dnssec: DNSSECResult | undefined = dnssecResult.status === 'fulfilled'
     ? dnssecResult.value
     : { enabled: false, issues: [{ severity: 'high' as const, message: `DNSSEC check failed: ${dnssecResult.reason?.message || 'Unknown error'}` }] };
+
+  // WHOIS/RDAP result
+  const whois: WhoisResult | undefined = whoisResult.status === 'fulfilled'
+    ? whoisResult.value
+    : { found: false, issues: [{ severity: 'info' as const, message: `WHOIS check failed: ${whoisResult.reason?.message || 'Unknown error'}` }] };
 
   // ARC readiness is derived from SPF/DKIM/DMARC — skip if any prerequisite is disabled
   const arcSkipped = !isEnabled('arc') || !isEnabled('spf') || !isEnabled('dkim') || !isEnabled('dmarc');
@@ -182,6 +188,17 @@ export async function analyzeDomain(
   const { grade, score } = calculateGrade(spf, dkim, dmarc, mx, bimi, mtaSts, tlsRpt, arc, dnssec);
   const recommendations = generateRecommendations(spf, dkim, dmarc, mx, bimi, mtaSts, tlsRpt, arc, dnssec);
 
+  // Append WHOIS recommendations from issues
+  if (whois && !whois.skipped && whois.issues.length > 0) {
+    for (const issue of whois.issues) {
+      if (issue.recommendation && issue.severity !== 'info') {
+        const icon = issue.severity === 'critical' ? '🚨' : issue.severity === 'high' ? '⚠️' : '💡';
+        const label = issue.severity === 'critical' ? '[緊急]' : issue.severity === 'high' ? '[重要]' : '[推奨]';
+        recommendations.push(`${icon} ${label} ${issue.recommendation}`);
+      }
+    }
+  }
+
   // Collect any check-level errors for the error field (including advanced checks)
   const errors: string[] = [];
   if (spfResult.status === 'rejected') errors.push(`SPF: ${spfResult.reason?.message}`);
@@ -192,6 +209,7 @@ export async function analyzeDomain(
   if (mtaStsResult.status === 'rejected') errors.push(`MTA-STS: ${mtaStsResult.reason?.message}`);
   if (tlsRptResult.status === 'rejected') errors.push(`TLS-RPT: ${tlsRptResult.reason?.message}`);
   if (dnssecResult.status === 'rejected') errors.push(`DNSSEC: ${dnssecResult.reason?.message}`);
+  if (whoisResult.status === 'rejected') errors.push(`WHOIS: ${whoisResult.reason?.message}`);
 
   return {
     domain,
@@ -207,6 +225,7 @@ export async function analyzeDomain(
     tlsRpt,
     arc,
     dnssec,
+    whois,
     recommendations,
     ...(errors.length > 0 ? { error: errors.join('; ') } : {}),
   };
