@@ -199,11 +199,13 @@ export async function checkWhois(domain: string, options: { timeout?: number } =
 
   // Check EPP status for security
   if (eppStatus && eppStatus.length > 0) {
-    const hasTransferLock = eppStatus.some(s => 
-      s === 'clientTransferProhibited' || s === 'serverTransferProhibited'
+    // Normalize EPP status for comparison (RDAP may return space-separated lowercase)
+    const normalizedStatus = eppStatus.map(s => s.toLowerCase().replace(/\s+/g, ''));
+    const hasTransferLock = normalizedStatus.some(s => 
+      s === 'clienttransferprohibited' || s === 'servertransferprohibited'
     );
-    const hasDeleteLock = eppStatus.some(s =>
-      s === 'clientDeleteProhibited' || s === 'serverDeleteProhibited'  
+    const hasDeleteLock = normalizedStatus.some(s =>
+      s === 'clientdeleteprohibited' || s === 'serverdeleteprohibited'  
     );
 
     if (!hasTransferLock) {
@@ -223,10 +225,11 @@ export async function checkWhois(domain: string, options: { timeout?: number } =
     }
 
     // Check for redemption/pending delete status
-    if (eppStatus.some(s => s === 'redemptionPeriod' || s === 'pendingDelete')) {
+    const dangerStatus = normalizedStatus.find(s => s === 'redemptionperiod' || s === 'pendingdelete');
+    if (dangerStatus) {
       issues.push({
         severity: 'critical',
-        message: `Domain is in ${eppStatus.find(s => s === 'redemptionPeriod' || s === 'pendingDelete')} status`,
+        message: `Domain is in ${eppStatus.find(s => s.toLowerCase().replace(/\s+/g, '') === dangerStatus)} status`,
         recommendation: 'Contact your registrar immediately to recover the domain',
       });
     }
